@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Заказы на разработку - Se1dhe Store Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="flex justify-between items-center">
+    <div>
+            <h1 class="page-title">Заказы на разработку</h1>
+            <p class="page-subtitle">Управление заказами на разработку ботов</p>
+    </div>
+    <div class="flex gap-2">
+            <button onclick="loadOrders('pending')" class="btn btn-warning btn-sm flex items-center gap-2">
+                <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></span>
+                Ожидают оплаты
+        </button>
+            <button onclick="loadOrders('in_progress')" class="btn btn-info btn-sm flex items-center gap-2">
+                <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.393 1.393c1.017-.936 1.807-2.09 1.807-3.393V6.75c0-1.591-1.259-2.75-2.75-2.75H5.75C4.259 4 3 5.159 3 6.75v6.5c0 1.303.79 2.457 1.807 3.393L6 17.25m14.8.8v.008a2.25 2.25 0 01-2.25 2.25H5.25a2.25 2.25 0 01-2.25-2.25v-.008m19.8 0a2.25 2.25 0 00-2.25-2.25H5.25a2.25 2.25 0 00-2.25 2.25" /></svg></span>
+                В разработке
+        </button>
+            <button onclick="loadOrders('completed')" class="btn btn-success btn-sm flex items-center gap-2">
+                <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></span>
+                Завершённые
+        </button>
+            <button onclick="loadOrders()" class="btn btn-secondary btn-sm flex items-center gap-2">
+                <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg></span>
+                Все
+    </button>
+        </div>
+    </div>
+</div>
+
+<!-- Orders Table -->
+<div class="card">
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Пользователь</th>
+                    <th>Тип бота</th>
+                    <th class="text-right">Стоимость</th>
+                    <th class="text-center">Статус</th>
+                    <th>Дата</th>
+                    <th class="text-right">Действия</th>
+            </tr>
+        </thead>
+            <tbody id="ordersTableBody">
+            <tr>
+                    <td colspan="7" class="text-center py-8 text-secondary">Загрузка...</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<!-- Order Detail Modal -->
+<div id="orderDetailModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 48rem; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header">
+            <h2 class="modal-title">Детали заказа #<span id="orderDetailId"></span></h2>
+            <button onclick="Modal.close('orderDetailModal')" class="modal-close">
+                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+            </button>
+        </div>
+            <div id="orderDetailContent" class="space-y-4">
+                <!-- Content will be loaded here -->
+                </div>
+            <div class="mt-6 flex gap-3 justify-end">
+            <button onclick="Modal.close('orderDetailModal')" class="btn btn-secondary">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<!-- Status Update Modal -->
+<div id="statusModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 28rem;">
+        <div class="modal-header">
+            <h2 class="modal-title">Изменить статус заказа</h2>
+            <button onclick="Modal.close('statusModal')" class="modal-close">
+                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+            </button>
+        </div>
+        <form id="statusForm">
+            <input type="hidden" id="statusOrderId">
+            <div class="form-group">
+                <label class="form-label">Статус</label>
+                <select id="statusSelect" required class="form-select">
+                    <option value="pending">Ожидает оплаты</option>
+                    <option value="paid">Оплачен</option>
+                    <option value="in_progress">В разработке</option>
+                    <option value="completed">Завершён</option>
+                    <option value="cancelled">Отменён</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Комментарий администратора</label>
+                <textarea id="statusComment" rows="3" class="form-textarea"></textarea>
+            </div>
+            <div id="archiveFileContainer" class="form-group hidden">
+                <label class="form-label">Архив заказа (только для статуса "Завершён")</label>
+                <input type="file" id="archiveFile" accept=".zip,.rar,.7z,.tar,.gz" class="form-input">
+                <p class="text-xs text-secondary mt-1">Поддерживаемые форматы: ZIP, RAR, 7Z, TAR, GZ</p>
+            </div>
+            <div class="flex gap-3 justify-end mt-6">
+                <button type="button" onclick="Modal.close('statusModal')" class="btn btn-secondary flex items-center gap-2">
+                    <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+                    Отмена
+                </button>
+                <button type="submit" class="btn btn-primary flex items-center gap-2">
+                    <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12.75m-9 0h3.75m-3.75 0h-3.75M15 12.75a3 3 0 11-6 0 3 3 0 016 0z" /></svg></span>
+                    Сохранить
+                </button>
+            </div>
+        </form>
+                </div>
+            </div>
+            
+{% block scripts %}
+<script src="/static/js/custom-orders.js"></script>
+{% endblock %}
+{% endblock %}

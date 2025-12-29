@@ -1,0 +1,223 @@
+"""
+Обработчики для работы с конкурсами в каналах
+"""
+from aiogram import Router, Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy.ext.asyncio import AsyncSession
+from database.db import AsyncSessionLocal
+from bot.services.contest_service import ContestService
+from shared.services.telegram_service import TelegramService
+from shared.config import config
+
+router = Router()
+
+
+def format_contest_message(contest, bot_username: str) -> tuple[str, InlineKeyboardMarkup]:
+    """
+    Форматировать сообщение о конкурсе
+    
+    @param contest объект конкурса
+    @param bot_username username бота (без @)
+    @return текст сообщения и клавиатура
+    """
+    text = f"🎉 <b>{contest.title}</b>\n\n"
+    
+    if contest.description:
+        text += f"{contest.description}\n\n"
+    
+    # Призовые места
+    text += "🏆 <b>Призовые места:</b>\n"
+    prizes = sorted(contest.prizes, key=lambda p: p.place)
+    for prize in prizes:
+        emoji = "🥇" if prize.place == 1 else "🥈" if prize.place == 2 else "🥉" if prize.place == 3 else "🏆"
+        text += f"{emoji} <b>{prize.place} место:</b> {prize.title}\n"
+        if prize.description:
+            text += f"   {prize.description}\n"
+    
+    # Спонсоры
+    if contest.sponsors:
+        text += "\n📢 <b>Спонсоры:</b>\n"
+        for sponsor in contest.sponsors:
+            text += f"• {sponsor.channel_title}\n"
+    
+    # Дата окончания - отображаем как есть (в БД хранится в киевском времени)
+    text += f"\n⏰ <b>Дата окончания:</b> {contest.end_date.strftime('%d.%m.%Y %H:%M')}\n"
+    
+    # Deep Link кнопка для регистрации (Web App кнопки не работают в каналах)
+    deep_link_url = f"https://t.me/{bot_username}?start=contest_{contest.id}"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🎯 Зарегистрироваться",
+            url=deep_link_url
+        )]
+    ])
+    
+    return text, keyboard
+
+
+def format_results_message(contest, bot_username: str, webapp_url: str) -> tuple[str, InlineKeyboardMarkup]:
+    """
+    Форматировать сообщение с результатами конкурса
+    
+    @param contest объект конкурса
+    @param bot_username username бота (без @)
+    @param webapp_url URL вебаппа для прямого доступа
+    @return текст сообщения и клавиатура
+    """
+    text = f"🏆 <b>Результаты конкурса: {contest.title}</b>\n\n"
+    
+    # Победители
+    prizes = sorted(contest.prizes, key=lambda p: p.place)
+    winners = [p for p in prizes if p.winner_user_id]
+    
+    if winners:
+        text += "🎉 <b>Победители:</b>\n\n"
+        for prize in winners:
+            emoji = "🥇" if prize.place == 1 else "🥈" if prize.place == 2 else "🥉" if prize.place == 3 else "🏆"
+            text += f"{emoji} <b>{prize.place} место:</b> {prize.title}\n"
+            text += f"   Победитель: @{prize.winner_username or 'не указан'}\n\n"
+    
+    # Deep Link кнопка для просмотра результатов
+    deep_link_url = f"https://t.me/{bot_username}?start=results_{contest.id}"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📊 Посмотреть результаты",
+            url=deep_link_url
+        )]
+    ])
+    
+    return text, keyboard
+
+
+async def publish_contest_to_channel(contest_id: int, bot: Bot, webapp_url: str) -> bool:
+    """
+    Опубликовать конкурс в канале
+    
+    @param contest_id ID конкурса
+    @param bot экземпляр бота
+    @param webapp_url URL вебаппа (не используется, оставлен для совместимости)
+    @return True если успешно
+    """
+    async with AsyncSessionLocal() as db:
+        service = ContestService(db)
+        contest = await service.get_contest_by_id(contest_id)
+        
+        if not contest:
+            return False
+        
+        # Получаем username бота для создания deep link
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username
+        if not bot_username:
+            print("Ошибка: Не удалось получить username бота")
+            return False
+        
+        text, keyboard = format_contest_message(contest, bot_username)
+        
+        try:
+            # Проверяем права бота в канале
+            try:
+                bot_member = await bot.get_chat_member(chat_id=contest.channel_id, user_id=bot_info.id)
+                if bot_member.status not in ['administrator', 'creator']:
+                    print(f"Ошибка: Бот не является администратором канала. Статус: {bot_member.status}")
+                    return False
+            except Exception as e:
+                print(f"Ошибка проверки прав бота: {e}")
+                return False
+            
+            # Отправляем сообщение в канал с обычной URL кнопкой
+            message = await bot.send_message(
+                chat_id=contest.channel_id,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            
+            await service.publish_contest(contest_id, message.message_id)
+            return True
+            
+        except Exception as e:
+            print(f"Ошибка публикации конкурса: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return False
+
+
+async def publish_results_to_channel(contest_id: int, bot: Bot, webapp_url: str) -> bool:
+    """
+    Опубликовать результаты конкурса в канале
+    
+    @param contest_id ID конкурса
+    @param bot экземпляр бота
+    @param webapp_url URL вебаппа
+    @return True если успешно
+    """
+    async with AsyncSessionLocal() as db:
+        service = ContestService(db)
+        contest = await service.get_contest_by_id(contest_id)
+        
+        if not contest:
+            return False
+        
+        # Получаем username бота для создания deep link
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username
+        if not bot_username:
+            print("Ошибка: Не удалось получить username бота")
+            return False
+        
+        text, keyboard = format_results_message(contest, bot_username, webapp_url)
+        
+        try:
+            message = await bot.send_message(
+                chat_id=contest.channel_id,
+                text=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            
+            await service.publish_results(contest_id, message.message_id)
+            
+            # Отправляем уведомления победителям
+            await notify_winners(contest, bot)
+            
+            return True
+        except Exception as e:
+            print(f"Ошибка публикации результатов: {e}")
+            return False
+
+
+async def notify_winners(contest, bot: Bot):
+    """
+    Отправить уведомления победителям
+    
+    @param contest объект конкурса
+    @param bot экземпляр бота
+    """
+    telegram_service = TelegramService(bot)
+    
+    prizes = sorted(contest.prizes, key=lambda p: p.place)
+    winners = [p for p in prizes if p.winner_user_id]
+    
+    for prize in winners:
+        if prize.winner_user_id:
+            # Проверяем, писал ли пользователь боту
+            has_started = await telegram_service.has_user_started_bot(prize.winner_user_id)
+            
+            if has_started:
+                emoji = "🥇" if prize.place == 1 else "🥈" if prize.place == 2 else "🥉" if prize.place == 3 else "🏆"
+                message = (
+                    f"🎉 Поздравляем! Вы выиграли {prize.place} место в конкурсе \"{contest.title}\"!\n\n"
+                    f"{emoji} <b>Ваш приз:</b> {prize.title}\n"
+                )
+                if prize.description:
+                    message += f"{prize.description}\n"
+                
+                await telegram_service.send_message_to_user(
+                    prize.winner_user_id,
+                    message,
+                    parse_mode="HTML"
+                )
+

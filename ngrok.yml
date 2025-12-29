@@ -1,0 +1,9 @@
+version: "2"
+authtoken: 37A48CdqV3GqE4F5fpNkNGxuiOx_3iVRXV3Fffkfmz2zm2eke
+region: eu
+tunnels:
+  web:
+    addr: web:8000
+    proto: http
+    domain: gnat-desired-kingfish.ngrok-free.app
+

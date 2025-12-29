@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}Боты - Se1dhe Store Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="flex justify-between items-center">
+    <div>
+            <h1 class="page-title">Боты</h1>
+            <p class="page-subtitle">Управление ботами в каталоге</p>
+        </div>
+        <button onclick="Modal.open('createModal')" class="btn btn-primary flex items-center gap-2">
+            <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></span>
+            Добавить бота
+        </button>
+    </div>
+</div>
+
+<!-- Currency Rate Info -->
+<div class="card mb-6">
+    <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3">
+            <span class="text-secondary">Курс:</span>
+            <span class="font-bold text-primary" id="currentRate">Загрузка...</span>
+        </div>
+        <button onclick="refreshRate()" class="btn btn-ghost btn-sm flex items-center gap-2">
+            <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg></span>
+            Обновить
+        </button>
+    </div>
+</div>
+
+<!-- Bots Table -->
+<div class="card">
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Бот</th>
+                    <th>Категория</th>
+                    <th class="text-right">Цена</th>
+                    <th class="text-center">Статистика</th>
+                    <th class="text-center">Статус</th>
+                    <th class="text-right">Действия</th>
+            </tr>
+        </thead>
+            <tbody>
+            {% for bot in bots %}
+                <tr>
+                    <td>
+                    <div class="flex items-center gap-3">
+                        {% if bot.image_path %}
+                        <img src="/api/uploads/{{ bot.image_path }}" alt="{{ bot.name_en }}" class="w-12 h-12 rounded-lg object-cover">
+                        {% else %}
+                            <div class="w-12 h-12 rounded-lg bg-tertiary flex items-center justify-center">
+                            <span class="text-xl opacity-50">🤖</span>
+                        </div>
+                        {% endif %}
+                        <div>
+                                <p class="font-medium text-primary">{{ bot.name_ru or bot.name_en }}</p>
+                                <p class="text-xs text-secondary">ID: {{ bot.id }}</p>
+                        </div>
+                    </div>
+                </td>
+                    <td>
+                        <span class="text-secondary text-sm">{{ bot.category.name_ru if bot.category else '—' }}</span>
+                </td>
+                    <td class="text-right">
+                    <div class="space-y-0.5">
+                            <p class="font-bold text-primary">
+                            ${{ bot.price_usd }}
+                            {% if bot.discount_percent > 0 %}
+                                <span class="text-success text-xs">-{{ bot.discount_percent }}%</span>
+                            {% endif %}
+                        </p>
+                            <p class="text-xs text-secondary">⭐ {{ bot.price_stars }} Stars</p>
+                    </div>
+                </td>
+                    <td>
+                    <div class="flex items-center justify-center gap-4 text-xs">
+                        <div class="text-center">
+                                <p class="text-secondary">Покупок</p>
+                                <p class="font-bold text-primary">{{ bot.purchases_count }}</p>
+                        </div>
+                        <div class="text-center">
+                                <p class="text-secondary">Скачиваний</p>
+                                <p class="font-bold text-primary">{{ bot.downloads_count }}</p>
+                        </div>
+                        <div class="text-center">
+                                <p class="text-secondary">Рейтинг</p>
+                                <p class="font-bold text-warning">{{ bot.average_rating or '—' }}</p>
+                        </div>
+                    </div>
+                </td>
+                    <td class="text-center">
+                    {% if bot.is_active %}
+                        <span class="badge badge-success">
+                            <span class="badge-dot"></span>
+                        Активен
+                    </span>
+                    {% else %}
+                        <span class="badge badge-error">
+                            <span class="badge-dot"></span>
+                        Неактивен
+                    </span>
+                    {% endif %}
+                </td>
+                    <td class="text-right">
+                    <div class="flex items-center justify-end gap-1">
+                            <button onclick="openEditModal({{ bot.id }})" class="btn btn-ghost btn-icon" title="Редактировать">
+                                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg></span>
+                        </button>
+                            <button onclick="openVersionsModal({{ bot.id }})" class="btn btn-ghost btn-icon" title="Версии">
+                                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg></span>
+                        </button>
+                            <button onclick="confirmDelete({{ bot.id }}, '{{ bot.name_ru or bot.name_en }}')" class="btn btn-ghost btn-icon text-error" title="Удалить">
+                                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg></span>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                    <td colspan="6" class="text-center py-12 text-secondary">
+                    <div class="flex flex-col items-center gap-2">
+                        <p>Нет ботов в каталоге</p>
+                            <button onclick="Modal.open('createModal')" class="btn btn-primary btn-sm">
+                            + Добавить первого бота
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<!-- Create Modal -->
+<div id="createModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 48rem;">
+        <div class="modal-header">
+            <h2 class="modal-title">Добавить бота</h2>
+            <button onclick="Modal.close('createModal')" class="modal-close">
+                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+            </button>
+        </div>
+        <form id="createForm" enctype="multipart/form-data">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="form-label">Категория</label>
+                    <select name="category_id" required class="form-select">
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.name_ru or cat.name_en }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Цена (USDT)</label>
+                    <input type="number" step="0.01" name="price_usd" id="priceUsd" required class="form-input">
+                    <p class="text-xs text-secondary mt-1">≈ <span id="priceUahPreview">0</span> грн | ⭐ <span id="priceStarsPreview">0</span> Stars</p>
+                </div>
+                
+                <div class="form-group md:col-span-2">
+                    <label class="form-label">Название (RU) <span class="text-accent-primary text-xs">— основное</span></label>
+                    <input type="text" name="name_ru" id="nameRu" required class="form-input" placeholder="Введите название на русском">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Название (UK)</label>
+                    <input type="text" name="name_uk" id="nameUk" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Название (EN)</label>
+                    <input type="text" name="name_en" id="nameEn" required class="form-input">
+                </div>
+                
+                <input type="hidden" name="price_stars" id="priceStarsField">
+                <input type="hidden" name="price_uah" id="priceUahField">
+                
+                <div class="form-group md:col-span-2">
+                    <label class="form-label">Описание (RU) <span class="text-accent-primary text-xs">— основное</span></label>
+                    <textarea name="short_description_ru" id="descRu" required rows="2" class="form-textarea" placeholder="Краткое описание бота"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Описание (UK)</label>
+                    <textarea name="short_description_uk" id="descUk" required rows="2" class="form-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Описание (EN)</label>
+                    <textarea name="short_description_en" id="descEn" required rows="2" class="form-textarea"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Изображение</label>
+                    <input type="file" name="image" accept="image/*" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Файл бота (zip)</label>
+                    <input type="file" name="bot_file" accept=".zip,.rar,.7z" required class="form-input">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="Modal.close('createModal')" class="btn btn-secondary flex items-center gap-2">
+                    <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+                    Отмена
+                </button>
+                <button type="submit" class="btn btn-primary flex items-center gap-2">
+                    <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg></span>
+                    Создать
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 48rem;">
+        <div class="modal-header">
+            <h2 class="modal-title">Редактировать бота</h2>
+            <button onclick="Modal.close('editModal')" class="modal-close">
+                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+            </button>
+        </div>
+        <form id="editForm">
+            <input type="hidden" id="editBotId" name="bot_id">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="form-label">Категория</label>
+                    <select name="category_id" id="editCategoryId" class="form-select">
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.name_ru or cat.name_en }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Цена (USDT)</label>
+                    <input type="number" step="0.01" name="price_usd" id="editPriceUsd" class="form-input">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Название (RU)</label>
+                    <input type="text" name="name_ru" id="editNameRu" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Название (UK)</label>
+                    <input type="text" name="name_uk" id="editNameUk" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Название (EN)</label>
+                    <input type="text" name="name_en" id="editNameEn" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Скидка (%)</label>
+                    <input type="number" min="0" max="100" name="discount_percent" id="editDiscount" class="form-input">
+                </div>
+                
+                <div class="form-group md:col-span-2">
+                    <label class="form-label">Описание (RU)</label>
+                    <textarea name="short_description_ru" id="editDescRu" rows="2" class="form-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Описание (UK)</label>
+                    <textarea name="short_description_uk" id="editDescUk" rows="2" class="form-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Описание (EN)</label>
+                    <textarea name="short_description_en" id="editDescEn" rows="2" class="form-textarea"></textarea>
+                </div>
+                
+                <div class="form-group md:col-span-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="is_active" id="editIsActive" class="form-checkbox">
+                        <span class="text-secondary">Активен (отображается в каталоге)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="Modal.close('editModal')" class="btn btn-secondary flex items-center gap-2">
+                    <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+                    Отмена
+                </button>
+                <button type="submit" class="btn btn-primary flex items-center gap-2">
+                    <span class="icon icon-sm"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12.75m-9 0h3.75m-3.75 0h-3.75M15 12.75a3 3 0 11-6 0 3 3 0 016 0z" /></svg></span>
+                    Сохранить
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Versions Modal -->
+<div id="versionsModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 36rem;">
+        <div class="modal-header">
+            <h2 class="modal-title">Версии бота</h2>
+            <button onclick="Modal.close('versionsModal')" class="modal-close">
+                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+            </button>
+        </div>
+        <div id="versionsList" class="space-y-3 max-h-96 overflow-y-auto">
+            <p class="text-secondary text-center py-4">Загрузка...</p>
+        </div>
+        <div class="mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+            <button onclick="openAddVersionModal()" class="btn btn-primary w-full">
+                + Добавить новую версию
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Add Version Modal -->
+<div id="addVersionModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 32rem;">
+        <div class="modal-header">
+            <h2 class="modal-title">Новая версия</h2>
+            <button onclick="Modal.close('addVersionModal')" class="modal-close">
+                <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></span>
+            </button>
+        </div>
+        <form id="addVersionForm" enctype="multipart/form-data">
+            <input type="hidden" id="versionBotId" name="bot_id">
+            <div class="space-y-4">
+                <div class="form-group">
+                    <label class="form-label">Номер версии</label>
+                    <input type="text" name="version_number" id="versionNumber" required placeholder="1.1.0" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Changelog (RU)</label>
+                    <textarea name="changelog_ru" rows="3" class="form-textarea" placeholder="Что нового в этой версии..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Цена обновления (USDT)</label>
+                    <input type="number" step="0.01" name="update_price_usd" value="0" class="form-input">
+                    <p class="text-xs text-secondary mt-1">0 = бесплатное обновление</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Файл бота (zip)</label>
+                    <input type="file" name="bot_file" accept=".zip,.rar,.7z" required class="form-input">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="Modal.close('addVersionModal')" class="btn btn-secondary">
+                    Отмена
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    Загрузить версию
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 28rem;">
+        <div class="text-center">
+            <h2 class="text-xl font-bold mb-2">Удалить бота?</h2>
+            <p class="text-secondary mb-6">Вы уверены, что хотите удалить бота <span id="deleteBotName" class="text-primary font-medium"></span>? Это действие нельзя отменить.</p>
+            <input type="hidden" id="deleteBotId">
+            <div class="flex gap-3">
+                <button onclick="Modal.close('deleteModal')" class="btn btn-secondary flex-1">
+                    Отмена
+                </button>
+                <button onclick="deleteBot()" class="btn btn-error flex-1">
+                    Удалить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script src="/static/js/bots.js"></script>
+{% endblock %}
+{% endblock %}

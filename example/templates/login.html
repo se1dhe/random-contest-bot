@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход - Se1dhe Store Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass rounded-2xl p-8 w-full max-w-md">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-primary mb-2">Se1dhe Store</h1>
+            <p class="text-secondary">Админ-панель</p>
+        </div>
+        
+        {% if error %}
+        <div class="card mb-6" style="background: var(--color-error-bg); border-color: var(--color-error);">
+            <p class="text-error">{{ error }}</p>
+        </div>
+        {% endif %}
+        
+        <form method="POST" action="/login">
+            <div class="form-group">
+                <label class="form-label">Пароль администратора</label>
+                <input 
+                    type="password" 
+                    name="password" 
+                    required
+                    class="form-input"
+                    placeholder="Введите пароль"
+                    autofocus
+                >
+            </div>
+            
+            <button type="submit" class="btn btn-primary w-full">
+                Войти
+            </button>
+        </form>
+        
+        <p class="text-center text-tertiary text-sm mt-6">
+            Также поддерживается вход через Telegram
+        </p>
+    </div>
+</body>
+</html>

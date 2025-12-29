@@ -1,0 +1,27 @@
+# Пример файла для локальной разработки
+# Скопируйте этот файл в docker-compose.override.yml для переопределения настроек
+# Этот файл будет автоматически использован docker-compose
+
+version: '3.8'
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+  
+  redis:
+    ports:
+      - "6379:6379"
+  
+  bot:
+    environment:
+      - DB_HOST=localhost  # Для локального подключения к БД
+      - REDIS_HOST=localhost
+  
+  web:
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=localhost
+      - REDIS_HOST=localhost
+
