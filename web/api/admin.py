@@ -1,7 +1,8 @@
 """
 API роуты для админки
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from datetime import datetime
@@ -16,8 +17,16 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from shared.config import config
 from pydantic import BaseModel
+import os
+import shutil
+import uuid
+from pathlib import Path
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Настройка папки для загрузки файлов
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 class ContestCreate(BaseModel):
@@ -410,24 +419,73 @@ async def get_contests(
 
 @router.post("/contests")
 async def create_contest(
-    data: ContestCreate,
+    title: str = Form(...),
+    description: Optional[str] = Form(None),
+    channel_id: int = Form(...),
+    end_date: str = Form(...),
+    prize_count: int = Form(...),
+    draw_method: str = Form(...),
+    prizes: str = Form(...),  # JSON строка
+    sponsors: Optional[str] = Form(None),  # JSON строка
+    require_youtube_subscription: bool = Form(False),
+    youtube_subscription_days_required: int = Form(0),
+    image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin)
 ):
     """
     Создать новый конкурс
     
-    @param data данные конкурса
+    @param title название конкурса
+    @param description описание конкурса
+    @param channel_id ID канала
+    @param end_date дата окончания (ISO format)
+    @param prize_count количество призовых мест
+    @param draw_method метод розыгрыша
+    @param prizes JSON строка с призами
+    @param sponsors JSON строка со спонсорами
+    @param require_youtube_subscription требуется ли подписка на YouTube
+    @param youtube_subscription_days_required минимальное количество дней подписки
+    @param image загружаемое изображение
     @param db сессия БД
     @param admin_id ID администратора
     @return созданный конкурс
     """
+    import json
+    
     service = ContestService(db)
+    
+    # Сохраняем изображение, если загружено
+    image_path = None
+    if image and image.filename:
+        # Проверяем расширение файла
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+        file_ext = Path(image.filename).suffix.lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Недопустимый формат изображения. Разрешены: JPG, PNG, GIF, WEBP")
+        
+        # Генерируем уникальное имя файла
+        file_id = str(uuid.uuid4())
+        filename = f"{file_id}{file_ext}"
+        file_path = UPLOAD_DIR / filename
+        
+        # Сохраняем файл
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+        
+        image_path = f"uploads/{filename}"
+    
+    # Парсим JSON строки
+    try:
+        prizes_data = json.loads(prizes)
+        sponsors_data = json.loads(sponsors) if sponsors else None
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка парсинга JSON: {str(e)}")
     
     # Обрабатываем дату: используем dateutil.parser для надежного парсинга
     try:
         # dateutil.parser может обработать различные форматы даты
-        end_date = date_parser.parse(data.end_date)
+        end_date = date_parser.parse(end_date)
         
         # Если дата без таймзоны, считаем что это киевское время
         # Сохраняем в БД как есть (PostgreSQL настроен на киевское время)
@@ -462,15 +520,15 @@ async def create_contest(
         except (ValueError, AttributeError) as e2:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Неверный формат даты: '{data.end_date}'. Ожидается ISO формат (например: 2024-12-31T23:59:59Z). Ошибка: {str(e2)}"
+                detail=f"Неверный формат даты: '{end_date}'. Ожидается ISO формат (например: 2024-12-31T23:59:59Z). Ошибка: {str(e2)}"
             )
     
     # Определяем метод розыгрыша
-    draw_method = ContestDrawMethod.RANDOM if data.draw_method == "random" else ContestDrawMethod.BY_ACTIVITY
+    draw_method = ContestDrawMethod.RANDOM if draw_method == "random" else ContestDrawMethod.BY_ACTIVITY
     
     # Получаем информацию о канале для получения YouTube канала
     channel_result = await db.execute(
-        select(Channel).where(Channel.channel_id == data.channel_id)
+        select(Channel).where(Channel.channel_id == channel_id)
     )
     channel = channel_result.scalar_one_or_none()
     
@@ -479,7 +537,7 @@ async def create_contest(
     
     # Если требуется подписка на YouTube, берем YouTube канал из канала
     youtube_channel_id = None
-    if data.require_youtube_subscription:
+    if require_youtube_subscription:
         if not channel.youtube_channel_id:
             raise HTTPException(
                 status_code=400,
@@ -489,18 +547,19 @@ async def create_contest(
     
     # Создаем конкурс
     contest = await service.create_contest(
-        title=data.title,
-        channel_id=data.channel_id,
+        title=title,
+        channel_id=channel_id,
         end_date=end_date,
-        prize_count=data.prize_count,
+        prize_count=prize_count,
         draw_method=draw_method,
-        description=data.description,
+        description=description,
         youtube_channel_id=youtube_channel_id,
-        youtube_subscription_days_required=data.youtube_subscription_days_required if data.require_youtube_subscription else 0
+        youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
+        image_path=image_path
     )
     
     # Создаем призы
-    for prize_data in data.prizes:
+    for prize_data in prizes_data:
         prize = Prize(
             contest_id=contest.id,
             place=prize_data["place"],
@@ -510,8 +569,8 @@ async def create_contest(
         db.add(prize)
     
     # Создаем спонсоров
-    if data.sponsors:
-        for sponsor_data in data.sponsors:
+    if sponsors_data:
+        for sponsor_data in sponsors_data:
             sponsor = Sponsor(
                 contest_id=contest.id,
                 channel_id=sponsor_data["channel_id"],
@@ -579,6 +638,31 @@ async def draw_winners(
             status_code=400, 
             detail="Не удалось провести розыгрыш. Возможно, недостаточно участников."
         )
+    
+    # Получаем firstname победителей из Telegram API
+    from aiogram import Bot
+    from shared.config import config
+    bot = Bot(token=config.bot_token)
+    try:
+        # Обновляем конкурс для получения призов с победителями
+        await db.refresh(contest)
+        prizes = sorted(contest.prizes, key=lambda p: p.place)
+        winners = [p for p in prizes if p.winner_user_id]
+        
+        for prize in winners:
+            if prize.winner_user_id:
+                try:
+                    # Пытаемся получить информацию о пользователе через канал
+                    member = await bot.get_chat_member(chat_id=contest.channel_id, user_id=prize.winner_user_id)
+                    if member.user:
+                        prize.winner_firstname = member.user.first_name
+                except Exception:
+                    # Если не удалось получить, оставляем None
+                    pass
+        
+        await db.commit()
+    finally:
+        await bot.session.close()
     
     # Обновляем статус конкурса на FINISHED
     contest.status = ContestStatus.FINISHED

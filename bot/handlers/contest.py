@@ -40,6 +40,31 @@ def format_contest_message(contest, bot_username: str) -> tuple[str, InlineKeybo
         for sponsor in contest.sponsors:
             text += f"• {sponsor.channel_title}\n"
     
+    # Информация о YouTube подписке
+    if contest.youtube_channel_id:
+        youtube_url = None
+        # Формируем URL в зависимости от формата ID
+        if contest.youtube_channel_id.startswith('@'):
+            youtube_url = f"https://youtube.com/{contest.youtube_channel_id}"
+        elif contest.youtube_channel_id.startswith('http'):
+            youtube_url = contest.youtube_channel_id
+        elif contest.youtube_channel_id.startswith('UC') or contest.youtube_channel_id.startswith('HC'):
+            youtube_url = f"https://youtube.com/channel/{contest.youtube_channel_id}"
+        else:
+            youtube_url = f"https://youtube.com/@{contest.youtube_channel_id}"
+        
+        text += "\n📺 <b>Условие участия:</b>\n"
+        text += f"Необходимо подписаться на YouTube канал:\n"
+        text += f"<a href=\"{youtube_url}\">Подписаться на канал →</a>\n"
+        if contest.youtube_subscription_days_required > 0:
+            text += f"Требуется подписка минимум на {contest.youtube_subscription_days_required} "
+            if contest.youtube_subscription_days_required == 1:
+                text += "день\n"
+            elif contest.youtube_subscription_days_required < 5:
+                text += "дня\n"
+            else:
+                text += "дней\n"
+    
     # Дата окончания - отображаем как есть (в БД хранится в киевском времени)
     text += f"\n⏰ <b>Дата окончания:</b> {contest.end_date.strftime('%d.%m.%Y %H:%M')}\n"
     
@@ -76,7 +101,14 @@ def format_results_message(contest, bot_username: str, webapp_url: str) -> tuple
         for prize in winners:
             emoji = "🥇" if prize.place == 1 else "🥈" if prize.place == 2 else "🥉" if prize.place == 3 else "🏆"
             text += f"{emoji} <b>{prize.place} место:</b> {prize.title}\n"
-            text += f"   Победитель: @{prize.winner_username or 'не указан'}\n\n"
+            # Формируем ссылку на пользователя
+            if prize.winner_username:
+                winner_link = f"<a href=\"https://t.me/{prize.winner_username}\">@{prize.winner_username}</a>"
+            elif prize.winner_firstname:
+                winner_link = f"<a href=\"tg://user?id={prize.winner_user_id}\">{prize.winner_firstname}</a>"
+            else:
+                winner_link = "не указан"
+            text += f"   Победитель: {winner_link}\n\n"
     
     # Deep Link кнопка для просмотра результатов
     deep_link_url = f"https://t.me/{bot_username}?start=results_{contest.id}"
@@ -127,13 +159,48 @@ async def publish_contest_to_channel(contest_id: int, bot: Bot, webapp_url: str)
                 print(f"Ошибка проверки прав бота: {e}")
                 return False
             
-            # Отправляем сообщение в канал с обычной URL кнопкой
-            message = await bot.send_message(
-                chat_id=contest.channel_id,
-                text=text,
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
+            # Отправляем сообщение в канал с фото, если есть изображение
+            if contest.image_path:
+                # Проверяем существование файла
+                import os
+                from pathlib import Path
+                from aiogram.types import FSInputFile
+                
+                # Формируем абсолютный путь к файлу в контейнере
+                # contest.image_path хранится как "uploads/filename.png"
+                # В контейнере рабочая директория /app
+                if contest.image_path.startswith('/'):
+                    image_path = Path(contest.image_path)
+                else:
+                    image_path = Path('/app') / contest.image_path
+                
+                if image_path.exists():
+                    # Используем FSInputFile для отправки фото
+                    photo_file = FSInputFile(str(image_path))
+                    message = await bot.send_photo(
+                        chat_id=contest.channel_id,
+                        photo=photo_file,
+                        caption=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                else:
+                    # Если файл не найден, отправляем без фото
+                    print(f"Предупреждение: Файл изображения не найден: {image_path}")
+                    message = await bot.send_message(
+                        chat_id=contest.channel_id,
+                        text=text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+            else:
+                # Отправляем сообщение в канал с обычной URL кнопкой
+                message = await bot.send_message(
+                    chat_id=contest.channel_id,
+                    text=text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
             
             await service.publish_contest(contest_id, message.message_id)
             return True
@@ -175,7 +242,8 @@ async def publish_results_to_channel(contest_id: int, bot: Bot, webapp_url: str)
                 chat_id=contest.channel_id,
                 text=text,
                 reply_markup=keyboard,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
             
             await service.publish_results(contest_id, message.message_id)

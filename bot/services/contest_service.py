@@ -30,7 +30,8 @@ class ContestService:
         draw_method: ContestDrawMethod = ContestDrawMethod.RANDOM,
         description: Optional[str] = None,
         youtube_channel_id: Optional[str] = None,
-        youtube_subscription_days_required: int = 0
+        youtube_subscription_days_required: int = 0,
+        image_path: Optional[str] = None
     ) -> Contest:
         """
         Создать новый конкурс
@@ -43,6 +44,7 @@ class ContestService:
         @param description описание конкурса
         @param youtube_channel_id ID YouTube канала для обязательной подписки
         @param youtube_subscription_days_required минимальное количество дней подписки
+        @param image_path путь к изображению конкурса
         @return созданный конкурс
         """
         contest = Contest(
@@ -54,6 +56,7 @@ class ContestService:
             description=description,
             youtube_channel_id=youtube_channel_id,
             youtube_subscription_days_required=youtube_subscription_days_required,
+            image_path=image_path,
             status=ContestStatus.DRAFT
         )
         self.db.add(contest)

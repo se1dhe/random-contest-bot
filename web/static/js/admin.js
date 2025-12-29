@@ -74,7 +74,8 @@ const app = createApp({
                 prizes: [],
                 sponsors: [],
                 requireYoutubeSubscription: false,
-                youtubeSubscriptionDaysRequired: 0
+                youtubeSubscriptionDaysRequired: 0,
+                image: null
             },
             channelForm: {
                 username: '',
@@ -411,6 +412,21 @@ const app = createApp({
             }
         },
         
+        handleImageSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                // Проверяем размер файла (максимум 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('Размер файла не должен превышать 10MB');
+                    event.target.value = '';
+                    return;
+                }
+                this.contestForm.image = file;
+            } else {
+                this.contestForm.image = null;
+            }
+        },
+        
         updatePrizeInputs() {
             const count = this.contestForm.prizeCount;
             this.contestForm.prizes = [];
@@ -474,34 +490,38 @@ const app = createApp({
                 
                 const authParams = getAuthParams(tg);
                 
+                // Используем FormData для отправки файла
+                const formData = new FormData();
+                formData.append('title', this.contestForm.title);
+                formData.append('description', this.contestForm.description || '');
+                formData.append('channel_id', parseInt(this.contestForm.channelId));
+                formData.append('end_date', endDateISO);
+                formData.append('prize_count', this.contestForm.prizeCount);
+                formData.append('draw_method', this.contestForm.drawMethod);
+                formData.append('prizes', JSON.stringify(this.contestForm.prizes.map(p => ({
+                    place: p.place,
+                    title: p.title,
+                    description: p.description || null
+                }))));
+                formData.append('sponsors', JSON.stringify(this.contestForm.sponsors.length > 0 
+                    ? this.contestForm.sponsors.map(s => ({
+                        channel_id: parseInt(s.channelId),
+                        channel_title: s.channelTitle
+                    }))
+                    : null));
+                formData.append('require_youtube_subscription', this.contestForm.requireYoutubeSubscription);
+                formData.append('youtube_subscription_days_required', this.contestForm.requireYoutubeSubscription ? (this.contestForm.youtubeSubscriptionDaysRequired || 0) : 0);
+                
+                // Добавляем изображение, если выбрано
+                if (this.contestForm.image) {
+                    formData.append('image', this.contestForm.image);
+                }
+                
                 const response = await fetch(
                     `/api/admin/contests?user_id=${this.adminId}${authParams}`,
                     {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            title: this.contestForm.title,
-                            description: this.contestForm.description || null,
-                            channel_id: parseInt(this.contestForm.channelId),
-                            end_date: endDateISO,
-                            prize_count: this.contestForm.prizeCount,
-                            draw_method: this.contestForm.drawMethod,
-                            prizes: this.contestForm.prizes.map(p => ({
-                                place: p.place,
-                                title: p.title,
-                                description: p.description || null
-                            })),
-                            sponsors: this.contestForm.sponsors.length > 0 
-                                ? this.contestForm.sponsors.map(s => ({
-                                    channel_id: parseInt(s.channelId),
-                                    channel_title: s.channelTitle
-                                }))
-                                : null,
-                            require_youtube_subscription: this.contestForm.requireYoutubeSubscription,
-                            youtube_subscription_days_required: this.contestForm.requireYoutubeSubscription ? (this.contestForm.youtubeSubscriptionDaysRequired || 0) : 0
-                        })
+                        body: formData
                     }
                 );
                 
@@ -522,7 +542,8 @@ const app = createApp({
                     prizes: [],
                     sponsors: [],
                     requireYoutubeSubscription: false,
-                    youtubeSubscriptionDaysRequired: 0
+                    youtubeSubscriptionDaysRequired: 0,
+                    image: null
                 };
                 this.updatePrizeInputs();
                 
@@ -802,6 +823,21 @@ const app = createApp({
                             <div class="form-group">
                                 <label class="form-label">Описание (опционально)</label>
                                 <textarea class="form-textarea" v-model="contestForm.description"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Изображение конкурса (опционально)</label>
+                                <input 
+                                    type="file" 
+                                    class="form-input" 
+                                    accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                                    @change="handleImageSelect"
+                                >
+                                <small class="text-secondary" style="display: block; margin-top: 0.5rem;">
+                                    Поддерживаемые форматы: JPG, PNG, GIF, WEBP
+                                </small>
+                                <div v-if="contestForm.image" style="margin-top: 0.5rem; padding: 0.5rem; background: rgba(76, 175, 80, 0.1); border-radius: 0.5rem;">
+                                    <span style="color: #4CAF50;">✓ Файл выбран: {{ contestForm.image.name }}</span>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Канал</label>

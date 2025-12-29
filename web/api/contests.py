@@ -108,7 +108,8 @@ async def get_contest(
             for sponsor in contest.sponsors
         ],
         "youtube_channel_id": contest.youtube_channel_id,
-        "youtube_subscription_days_required": contest.youtube_subscription_days_required
+        "youtube_subscription_days_required": contest.youtube_subscription_days_required,
+        "image_path": contest.image_path
     }
 
 
@@ -130,6 +131,9 @@ async def get_contest_info(
     if not contest:
         raise HTTPException(status_code=404, detail="Конкурс не найден")
     
+    # Получаем количество участников
+    participants_count = await service.get_participants_count(contest_id)
+    
     # Преобразуем в словарь без проверки статуса
     return {
         "id": contest.id,
@@ -140,6 +144,7 @@ async def get_contest_info(
         "end_date": contest.end_date.isoformat() if contest.end_date else None,
         "status": contest.status.value,
         "prize_count": contest.prize_count,
+        "participants_count": participants_count,
         "prizes": [
             {
                 "id": prize.id,
@@ -159,7 +164,8 @@ async def get_contest_info(
             for sponsor in contest.sponsors
         ],
         "youtube_channel_id": contest.youtube_channel_id,
-        "youtube_subscription_days_required": contest.youtube_subscription_days_required
+        "youtube_subscription_days_required": contest.youtube_subscription_days_required,
+        "image_path": contest.image_path
     }
 
 
@@ -422,7 +428,8 @@ async def get_winners(
             "title": prize.title,
             "description": prize.description,
             "winner_user_id": prize.winner_user_id,
-            "winner_username": prize.winner_username
+            "winner_username": prize.winner_username,
+            "winner_firstname": prize.winner_firstname
         }
         for prize in winners
     ]

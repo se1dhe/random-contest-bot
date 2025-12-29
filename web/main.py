@@ -24,6 +24,11 @@ templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 templates = Jinja2Templates(directory=templates_dir)
 
+# Подключение папки uploads для доступа к загруженным изображениям
+uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
 # Подключение API роутеров
 app.include_router(contests.router)
 app.include_router(admin.router)

@@ -37,6 +37,7 @@ class Contest(BaseModel):
     prize_count = Column(Integer, nullable=False)  # Количество призовых мест
     youtube_channel_id = Column(String(255), nullable=True)  # ID YouTube канала для обязательной подписки
     youtube_subscription_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней подписки
+    image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
     
     # Связи
     channel = relationship("Channel", backref="contests")

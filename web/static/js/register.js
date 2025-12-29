@@ -1,13 +1,20 @@
 /**
  * Регистрация в конкурсе с авторизацией через YouTube
  */
-const { createApp } = Vue;
+console.log('Loading register.js...');
+console.log('Vue available:', typeof Vue !== 'undefined');
+
+if (typeof Vue === 'undefined') {
+  console.error('Vue.js не загружен!');
+  document.getElementById('app').innerHTML = '<div style="padding: 2rem; color: red;">Ошибка: Vue.js не загружен</div>';
+} else {
+  const { createApp } = Vue;
 
 // Константы
 const AUTH_POLL_INTERVAL = 3000; // 3 секунды
 const AUTH_TIMEOUT = 300000; // 5 минут
 
-createApp({
+const registerApp = createApp({
   data() {
     return {
       // Состояние загрузки
@@ -48,7 +55,12 @@ createApp({
      * Можно ли завершить регистрацию
      */
     canRegister() {
-      return this.youtubeConnected && !this.registrationComplete;
+      // Если требуется подписка на YouTube, проверяем авторизацию
+      if (this.requiresYouTubeSubscription) {
+        return this.youtubeConnected && !this.registrationComplete;
+      }
+      // Если YouTube не требуется, можно регистрироваться без авторизации
+      return !this.registrationComplete;
     },
     
     /**
@@ -125,6 +137,26 @@ createApp({
   },
   
   async mounted() {
+    console.log('Vue mounted, checking Telegram WebApp...');
+    
+    // Проверка доступности Telegram WebApp перед инициализацией
+    if (!this.tg) {
+      console.error('Telegram WebApp API недоступен');
+      this.error = 'Telegram WebApp API недоступен. Откройте страницу через Telegram.';
+      this.loading = false;
+      return;
+    }
+    
+    const initData = this.tg.initData;
+    if (!initData || initData.length === 0) {
+      console.error('initData пустой или отсутствует');
+      this.error = 'Не удалось получить данные авторизации. Откройте конкурс в канале и нажмите кнопку регистрации.';
+      this.loading = false;
+      return;
+    }
+    
+    console.log('Telegram WebApp доступен, инициализация...');
+    
     // Анимация появления контейнера
     if (typeof gsap !== 'undefined') {
       gsap.from('.webapp-container', {
@@ -518,17 +550,23 @@ createApp({
       this.registrationError = null;
       
       try {
+        const requestBody = {
+          user_id: this.userId,
+          username: this.username
+        };
+        
+        // Добавляем YouTube channel_id только если требуется подписка
+        if (this.requiresYouTubeSubscription && this.youtubeChannelId) {
+          requestBody.youtube_channel_id = this.youtubeChannelId;
+        }
+        
         const response = await fetch(`/api/contests/${this.contestId}/register`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-Telegram-Init-Data': this.initData
           },
-          body: JSON.stringify({
-            user_id: this.userId,
-            username: this.username,
-            youtube_channel_id: this.youtubeChannelId
-          })
+          body: JSON.stringify(requestBody)
         });
         
         if (!response.ok) {
@@ -684,6 +722,9 @@ createApp({
             <template v-if="!registrationComplete">
               <transition name="fade">
                 <div v-if="contestData" class="content-card" key="contest-info">
+                  <div v-if="contestData.image_path" style="margin-bottom: 1rem;">
+                    <img :src="'/' + contestData.image_path" alt="Изображение конкурса" style="width: 100%; border-radius: 0.5rem; max-height: 300px; object-fit: cover;">
+                  </div>
                   <div class="flex-between mb-2">
                     <div>
                       <div class="content-card-title">{{ contestData.title }}</div>
@@ -697,7 +738,7 @@ createApp({
               </transition>
 
               <transition name="slide">
-                <div class="content-card stack" key="youtube-auth">
+                <div v-if="requiresYouTubeSubscription" class="content-card stack" key="youtube-auth">
                   <div v-if="!youtubeConnected" class="flex-between">
                     <div>
                       <div class="content-card-title">Подключите YouTube</div>
@@ -712,7 +753,7 @@ createApp({
                     </div>
                   </div>
 
-                  <div v-if="requiresYouTubeSubscription && youtubeChannelUrl && !youtubeSubscribed && youtubeConnected" class="stack" style="margin-bottom: 1rem;">
+                  <div v-if="youtubeChannelUrl && !youtubeSubscribed && youtubeConnected" class="stack" style="margin-bottom: 1rem;">
                     <div class="info-badge" style="background: rgba(255, 0, 0, 0.1); border: 1px solid rgba(255, 0, 0, 0.3);">
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span>📺</span>
@@ -734,7 +775,7 @@ createApp({
                       </div>
                     </div>
                   </div>
-                  <div v-if="requiresYouTubeSubscription && youtubeSubscribed && youtubeConnected" class="stack" style="margin-bottom: 1rem;">
+                  <div v-if="youtubeSubscribed && youtubeConnected" class="stack" style="margin-bottom: 1rem;">
                     <div class="info-badge" style="background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3);">
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span>✅</span>
@@ -789,7 +830,7 @@ createApp({
                     <span v-if="loading" class="btn-spinner"></span>
                     {{ loading ? 'Регистрация...' : '🎉 Завершить регистрацию' }}
                   </button>
-                  <div class="micro text-center">Нужно подключить YouTube перед регистрацией</div>
+                  <div v-if="requiresYouTubeSubscription && !youtubeConnected" class="micro text-center">Нужно подключить YouTube перед регистрацией</div>
                 </div>
               </transition>
             </template>
@@ -798,4 +839,14 @@ createApp({
       </div>
     </div>
   `
-}).mount('#app');
+});
+
+  console.log('Mounting Vue app to #app...');
+  const appElement = document.getElementById('app');
+  if (!appElement) {
+    console.error('Element #app not found!');
+  } else {
+    console.log('Element #app found, mounting Vue...');
+    registerApp.mount('#app');
+  }
+}

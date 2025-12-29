@@ -3,22 +3,52 @@
  * Современные анимации с GSAP и Anime.js
  */
 
-import { initTelegramWebApp } from './utils/telegram.js';
-import { getContestInfo, getWinners } from './utils/api.js';
+console.log('Loading results.js...');
+console.log('Vue available:', typeof Vue !== 'undefined');
 
-const { createApp } = Vue;
+if (typeof Vue === 'undefined') {
+    console.error('Vue.js не загружен!');
+    const app = document.getElementById('app');
+    if (app) {
+        app.innerHTML = '<div style="padding: 2rem; color: red; text-align: center;">Ошибка: Vue.js не загружен</div>';
+    }
+} else {
+    const { createApp } = Vue;
 
-let tg;
-try {
-    tg = initTelegramWebApp();
-} catch (error) {
-    console.error('Ошибка инициализации Telegram WebApp:', error);
-}
+    let tg;
+    try {
+        if (typeof Telegram !== 'undefined' && Telegram.WebApp) {
+            tg = Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+        }
+    } catch (error) {
+        console.error('Ошибка инициализации Telegram WebApp:', error);
+    }
 
-const urlParams = new URLSearchParams(window.location.search);
-const contestId = urlParams.get('contest_id');
+    const urlParams = new URLSearchParams(window.location.search);
+    const contestId = urlParams.get('contest_id');
 
-createApp({
+    // Импортируем функции напрямую, если модули не загружаются
+    async function getContestInfo(contestId) {
+        const response = await fetch(`/api/contests/${contestId}/info`);
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Конкурс не найден');
+        }
+        return await response.json();
+    }
+
+    async function getWinners(contestId) {
+        const response = await fetch(`/api/contests/${contestId}/winners`);
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Результаты не найдены');
+        }
+        return await response.json();
+    }
+
+    const resultsApp = createApp({
     data() {
         return {
             contestId: contestId ? parseInt(contestId) : null,
@@ -30,9 +60,20 @@ createApp({
     },
     
     async mounted() {
+        console.log('Vue mounted, checking contest ID...');
+        
         if (!this.contestId) {
             this.showError('Не указан ID конкурса');
             return;
+        }
+        
+        // Проверка Telegram WebApp (необязательна для результатов, но желательна)
+        if (typeof Telegram === 'undefined' || !Telegram.WebApp) {
+            console.warn('Telegram WebApp API недоступен, продолжаем без него');
+        } else {
+            const tg = Telegram.WebApp;
+            tg.ready();
+            tg.expand();
         }
         
         // Анимация появления контейнера
@@ -184,6 +225,16 @@ createApp({
             return place <= 3 ? forms[place] : `${place}-е`;
         },
         
+        openUserLink(url) {
+            // Используем Telegram WebApp API для открытия ссылок, если доступен
+            if (typeof Telegram !== 'undefined' && Telegram.WebApp && Telegram.WebApp.openLink) {
+                Telegram.WebApp.openLink(url);
+            } else {
+                // Fallback для обычного браузера
+                window.open(url, '_blank');
+            }
+        },
+        
         getPlaceColor(place) {
             const colors = {
                 1: 'rgba(255, 215, 0, 0.2)',
@@ -217,11 +268,17 @@ createApp({
                 <div :style="{ opacity: state === 'loading' ? 0 : 1, transition: 'opacity 0.25s ease' }">
                     <transition name="fade">
                         <div v-if="contest" class="content-card" key="contest-info">
+                            <div v-if="contest.image_path" style="margin-bottom: 1rem;">
+                                <img :src="'/' + contest.image_path" alt="Изображение конкурса" style="width: 100%; border-radius: 0.5rem; max-height: 300px; object-fit: cover;">
+                            </div>
                             <div class="flex-between mb-2">
                                 <div>
                                     <div class="content-card-title">{{ contest.title }}</div>
                                     <div v-if="contest.description" class="content-card-subtitle">
                                         {{ contest.description }}
+                                    </div>
+                                    <div v-if="contest.participants_count !== undefined" class="content-card-subtitle" style="margin-top: 0.5rem; opacity: 0.8;">
+                                        Участников: <strong>{{ contest.participants_count }}</strong>
                                     </div>
                                 </div>
                                 <div class="pill info">
@@ -254,7 +311,14 @@ createApp({
                                             {{ winner.description }}
                                         </div>
                                         <div class="winner-name">
-                                            Победитель: <strong>@{{ winner.winner_username || 'не указан' }}</strong>
+                                            Победитель: 
+                                            <strong v-if="winner.winner_username">
+                                                <a @click.prevent="openUserLink('https://t.me/' + winner.winner_username)" href="#" style="color: inherit; text-decoration: underline; cursor: pointer;">@{{ winner.winner_username }}</a>
+                                            </strong>
+                                            <strong v-else-if="winner.winner_firstname">
+                                                <a @click.prevent="openUserLink('tg://user?id=' + winner.winner_user_id)" href="#" style="color: inherit; text-decoration: underline; cursor: pointer;">{{ winner.winner_firstname }}</a>
+                                            </strong>
+                                            <strong v-else>не указан</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -278,4 +342,14 @@ createApp({
             </div>
         </div>
     `
-}).mount('#app');
+    });
+
+    console.log('Mounting Vue app to #app...');
+    const appElement = document.getElementById('app');
+    if (!appElement) {
+        console.error('Element #app not found!');
+    } else {
+        console.log('Element #app found, mounting Vue...');
+        resultsApp.mount('#app');
+    }
+}
