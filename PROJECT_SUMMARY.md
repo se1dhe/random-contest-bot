@@ -71,8 +71,8 @@ random-contest-bot/
 │   │   ├── admin.py      # Админ API
 │   │   └── publish.py    # Публикация
 │   ├── templates/        # HTML шаблоны
-│   │   ├── register.html
-│   │   ├── results.html
+│   │   ├── register_ssr.html
+│   │   ├── results_ssr.html
 │   │   └── admin.html
 │   ├── static/           # Статические файлы
 │   │   ├── css/

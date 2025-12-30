@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Регистрация в конкурсе</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/webapp.css">
+</head>
+<body>
+    <div class="webapp-container">
+        {% if contest.image_path %}
+        <div style="margin-bottom: 1rem; position: relative; min-height: 200px; background: rgba(255, 255, 255, 0.05); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;">
+            <div id="image-loader" style="color: #aaa;">Загрузка изображения...</div>
+            <img id="contest-image" src="/{{ contest.image_path }}" alt="Изображение конкурса" style="width: 100%; border-radius: 0.5rem; max-height: 300px; object-fit: cover; display: none;" onload="document.getElementById('image-loader').style.display='none'; this.style.display='block';">
+        </div>
+        {% endif %}
+        
+        <div class="content-card">
+            <h2 style="color: #fff; margin-bottom: 0.5rem;">🎉 {{ contest.title }}</h2>
+            {% if contest.description %}
+            <p style="color: #aaa; margin-bottom: 1rem;">{{ contest.description }}</p>
+            {% endif %}
+            
+            <div style="margin-bottom: 1rem;">
+                <strong style="color: #fff;">🏆 Призовые места:</strong>
+                <ul style="color: #aaa; margin-top: 0.5rem;">
+                    {% for prize in contest.prizes|sort(attribute='place') %}
+                    <li>
+                        {% if prize.place == 1 %}🥇{% elif prize.place == 2 %}🥈{% elif prize.place == 3 %}🥉{% else %}🏆{% endif %}
+                        <strong>{{ prize.place }} место:</strong> {{ prize.title }}
+                        {% if prize.description %}<br><small>{{ prize.description }}</small>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            
+            {% if contest.youtube_channel_id %}
+            <div style="margin-bottom: 1rem; padding: 1rem; background: rgba(255, 193, 7, 0.1); border-radius: 0.5rem;">
+                <strong style="color: #ffc107;">📺 Условие участия:</strong>
+                <p style="color: #aaa; margin-top: 0.5rem;">
+                    Необходимо подписаться на YouTube канал 
+                    <a href="{{ required_youtube_channel_url }}" target="_blank" style="color: #ffc107; text-decoration: underline; font-weight: bold;">{{ required_youtube_channel_title }}</a>
+                    {% if contest.youtube_subscription_days_required > 0 %}
+                    минимум на {{ contest.youtube_subscription_days_required }} 
+                    {% if contest.youtube_subscription_days_required == 1 %}день{% elif contest.youtube_subscription_days_required < 5 %}дня{% else %}дней{% endif %}
+                    {% endif %}
+                </p>
+                
+                {% if youtube_connected %}
+                <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(76, 175, 80, 0.1); border-radius: 0.5rem;">
+                    <p style="color: #4caf50; margin-bottom: 0.5rem;">
+                        ✅ YouTube аккаунт подключен
+                        {% if youtube_channel_title %}
+                        <br><span style="font-size: 0.9rem; color: #aaa;">Канал: <strong style="color: #4caf50;">{{ youtube_channel_title }}</strong></span>
+                        {% endif %}
+                    </p>
+                    {% if youtube_subscribed %}
+                    <p style="color: #4caf50; font-size: 0.9rem;">✅ Вы подписаны на требуемый канал</p>
+                    {% else %}
+                    <p style="color: #ff4444; font-size: 0.9rem; margin-bottom: 0.5rem;">❌ Вы не подписаны на требуемый канал</p>
+                    {% endif %}
+                    <button onclick="disconnectYouTube()" style="background: rgba(255, 68, 68, 0.2); color: #ff4444; border: 1px solid #ff4444; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; width: 100%; margin-top: 0.5rem;">
+                        Отвязать YouTube аккаунт
+                    </button>
+                </div>
+                {% else %}
+                <div style="margin-top: 1rem;">
+                    <button onclick="connectYouTube()" style="background: #ff0000; color: #fff; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; cursor: pointer; width: 100%; font-weight: bold;">
+                        🔗 Подключить YouTube
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <div style="margin-bottom: 1rem;">
+                <strong style="color: #fff;">⏰ Дата окончания:</strong>
+                <p style="color: #aaa;">{{ contest.end_date.strftime('%d.%m.%Y %H:%M') }}</p>
+            </div>
+        </div>
+        
+        <div class="content-card" id="registration-form">
+            <h3 style="color: #fff; margin-bottom: 1rem;">Регистрация</h3>
+            <button id="register-btn" class="action-button" onclick="register()" style="width: 100%;">
+                🎯 Участвовать
+            </button>
+            <div id="error" style="color: #ff4444; margin-top: 1rem; display: none;"></div>
+        </div>
+        
+        <div class="content-card" id="success" style="display: none;">
+            <h3 style="color: #4caf50; margin-bottom: 1rem;">✅ Вы зарегистрированы!</h3>
+            <p style="color: #aaa;">Результаты будут опубликованы после окончания конкурса.</p>
+        </div>
+    </div>
+    
+    <script>
+        const tg = Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Применяем тему Telegram
+        const theme = tg.themeParams;
+        if (theme.bg_color) {
+            document.body.style.backgroundColor = theme.bg_color;
+        }
+        
+        async function register() {
+            const btn = document.getElementById('register-btn');
+            const errorDiv = document.getElementById('error');
+            const formDiv = document.getElementById('registration-form');
+            const successDiv = document.getElementById('success');
+            
+            btn.disabled = true;
+            btn.textContent = 'Регистрация...';
+            errorDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/contests/{{ contest.id }}/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Telegram-Init-Data': tg.initData
+                    },
+                    body: JSON.stringify({
+                        user_id: {{ user.id }},
+                        username: '{{ user.username or "" }}'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    formDiv.style.display = 'none';
+                    successDiv.style.display = 'block';
+                } else {
+                    errorDiv.textContent = data.detail || 'Ошибка регистрации';
+                    errorDiv.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = '🎯 Участвовать';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Ошибка соединения';
+                errorDiv.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = '🎯 Участвовать';
+            }
+        }
+        
+        async function disconnectYouTube() {
+            if (!confirm('Вы уверены, что хотите отвязать YouTube аккаунт?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/youtube/disconnect?user_id={{ user.id }}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-Telegram-Init-Data': tg.initData
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Перезагружаем страницу для обновления состояния
+                    location.reload();
+                } else {
+                    alert(data.detail || 'Ошибка при отвязке YouTube аккаунта');
+                }
+            } catch (error) {
+                alert('Ошибка соединения');
+            }
+        }
+        
+        function connectYouTube() {
+            // Показываем статус ожидания
+            const statusDiv = document.getElementById('auth-status');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+            }
+            
+            // Открываем страницу авторизации YouTube
+            const authUrl = `/api/youtube/auth?contest_id={{ contest.id }}&user_id={{ user.id }}&_auth=${encodeURIComponent(tg.initData)}`;
+            tg.openLink(authUrl);
+            
+            // Запускаем polling для проверки статуса авторизации
+            startAuthPolling();
+        }
+        
+        // Polling для проверки статуса авторизации YouTube
+        let authPollingInterval = null;
+        
+        function startAuthPolling() {
+            // Останавливаем предыдущий polling, если он был
+            if (authPollingInterval) {
+                clearInterval(authPollingInterval);
+            }
+            
+            // Проверяем статус каждые 2 секунды
+            authPollingInterval = setInterval(async function() {
+                try {
+                    const response = await fetch(`/api/youtube/check-auth?user_id={{ user.id }}&contest_id={{ contest.id }}`, {
+                        headers: {
+                            'X-Telegram-Init-Data': tg.initData
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        // Если авторизация завершена, перезагружаем страницу
+                        if (data.authenticated) {
+                            clearInterval(authPollingInterval);
+                            authPollingInterval = null;
+                            
+                            // Скрываем статус ожидания
+                            const statusDiv = document.getElementById('auth-status');
+                            if (statusDiv) {
+                                statusDiv.style.display = 'none';
+                            }
+                            
+                            // Перезагружаем страницу для обновления состояния
+                            location.reload();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Ошибка проверки статуса авторизации:', error);
+                }
+            }, 2000); // Проверяем каждые 2 секунды
+            
+            // Останавливаем polling через 5 минут (на случай, если пользователь не авторизуется)
+            setTimeout(function() {
+                if (authPollingInterval) {
+                    clearInterval(authPollingInterval);
+                    authPollingInterval = null;
+                }
+            }, 300000); // 5 минут
+        }
+    </script>
+</body>
+</html>

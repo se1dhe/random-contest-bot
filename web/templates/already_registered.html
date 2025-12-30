@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Вы уже участвуете</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/webapp.css">
+</head>
+<body>
+    <div class="webapp-container">
+        {% if contest.image_path %}
+        <div style="margin-bottom: 1rem;">
+            <img src="/{{ contest.image_path }}" alt="Изображение конкурса" style="width: 100%; border-radius: 0.5rem; max-height: 300px; object-fit: cover;">
+        </div>
+        {% endif %}
+        
+        <div class="content-card" style="text-align: center;">
+            <h2 style="color: #4caf50; margin-bottom: 1rem;">✅ Вы участвуете</h2>
+            <p style="color: #aaa; margin-bottom: 1rem;">
+                Ваш номер регистрации: <strong style="color: #fff;">#{{ participant.registration_number }}</strong>
+            </p>
+            <p style="color: #aaa; margin-bottom: 1rem;">
+                Результаты будут опубликованы:
+            </p>
+            <p style="color: #fff; font-size: 1.2rem; font-weight: bold;">
+                {{ contest.end_date.strftime('%d.%m.%Y %H:%M') }}
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const tg = Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        const theme = tg.themeParams;
+        if (theme.bg_color) {
+            document.body.style.backgroundColor = theme.bg_color;
+        }
+    </script>
+</body>
+</html>

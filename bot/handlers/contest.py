@@ -68,26 +68,33 @@ def format_contest_message(contest, bot_username: str) -> tuple[str, InlineKeybo
     # Дата окончания - отображаем как есть (в БД хранится в киевском времени)
     text += f"\n⏰ <b>Дата окончания:</b> {contest.end_date.strftime('%d.%m.%Y %H:%M')}\n"
     
-    # Deep Link кнопка для регистрации (Web App кнопки не работают в каналах)
-    deep_link_url = f"https://t.me/{bot_username}?start=contest_{contest.id}"
+    # Используем startapp= для открытия WebApp напрямую
+    # Формат: https://t.me/{bot_username}?startapp=contest_{contest.id}
+    # Это работает только если домен настроен через /setdomain в BotFather
+    # Telegram автоматически откроет WebApp с домена, указанного в /setdomain
+    register_url = f"https://t.me/{bot_username}?startapp=contest_{contest.id}"
     
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Формируем startapp URL для регистрации конкурса {contest.id}: {register_url}")
+    
+    # Используем обычную URL кнопку с startapp параметром
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="🎯 Зарегистрироваться",
-            url=deep_link_url
+            url=register_url
         )]
     ])
     
     return text, keyboard
 
 
-def format_results_message(contest, bot_username: str, webapp_url: str) -> tuple[str, InlineKeyboardMarkup]:
+def format_results_message(contest, bot_username: str) -> tuple[str, InlineKeyboardMarkup]:
     """
     Форматировать сообщение с результатами конкурса
     
     @param contest объект конкурса
     @param bot_username username бота (без @)
-    @param webapp_url URL вебаппа для прямого доступа
     @return текст сообщения и клавиатура
     """
     text = f"🏆 <b>Результаты конкурса: {contest.title}</b>\n\n"
@@ -110,13 +117,19 @@ def format_results_message(contest, bot_username: str, webapp_url: str) -> tuple
                 winner_link = "не указан"
             text += f"   Победитель: {winner_link}\n\n"
     
-    # Deep Link кнопка для просмотра результатов
-    deep_link_url = f"https://t.me/{bot_username}?start=results_{contest.id}"
+    # Используем startapp= для открытия WebApp напрямую
+    # Формат: https://t.me/{bot_username}?startapp=results_{contest.id}
+    results_url = f"https://t.me/{bot_username}?startapp=results_{contest.id}"
     
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Формируем startapp URL для результатов конкурса {contest.id}: {results_url}")
+    
+    # Используем обычную URL кнопку с startapp параметром
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="📊 Посмотреть результаты",
-            url=deep_link_url
+            url=results_url
         )]
     ])
     
@@ -139,13 +152,18 @@ async def publish_contest_to_channel(contest_id: int, bot: Bot, webapp_url: str)
         if not contest:
             return False
         
-        # Получаем username бота для создания deep link
+        # Получаем информацию о боте для проверки прав и username
         bot_info = await bot.get_me()
         bot_username = bot_info.username
         if not bot_username:
             print("Ошибка: Не удалось получить username бота")
             return False
         
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Публикация конкурса {contest_id}: bot_username = {bot_username}")
+        
+        # Формируем сообщение с startapp ссылкой для открытия WebApp
         text, keyboard = format_contest_message(contest, bot_username)
         
         try:
@@ -228,14 +246,15 @@ async def publish_results_to_channel(contest_id: int, bot: Bot, webapp_url: str)
         if not contest:
             return False
         
-        # Получаем username бота для создания deep link
+        # Получаем username бота для создания startapp ссылки
         bot_info = await bot.get_me()
         bot_username = bot_info.username
         if not bot_username:
             print("Ошибка: Не удалось получить username бота")
             return False
         
-        text, keyboard = format_results_message(contest, bot_username, webapp_url)
+        # Формируем сообщение с startapp ссылкой для открытия WebApp
+        text, keyboard = format_results_message(contest, bot_username)
         
         try:
             message = await bot.send_message(

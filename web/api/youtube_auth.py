@@ -25,11 +25,9 @@ logger = logging.getLogger(__name__)
 # Временные хранилища (в продакшене использовать Redis)
 oauth_states: Dict[str, dict] = {}
 completed_auths: Dict[int, dict] = {}
-user_tokens: Dict[int, dict] = {}
 
 # Константы
 STATE_EXPIRATION_MINUTES = 10
-AUTH_EXPIRATION_MINUTES = 10
 YOUTUBE_SCOPES = ['https://www.googleapis.com/auth/youtube.readonly']
 
 
@@ -194,8 +192,15 @@ def render_error_page(title: str, message: str, details: str = "") -> HTMLRespon
     )
 
 
-def render_success_page(channel_title: str) -> HTMLResponse:
-    """Рендер страницы успешной авторизации"""
+def render_success_page_with_redirect(channel_title: str, redirect_url: str, contest_id: int) -> HTMLResponse:
+    """
+    Рендерить страницу успеха с автоматическим редиректом обратно на страницу регистрации
+    
+    @param channel_title название YouTube канала
+    @param redirect_url URL для редиректа
+    @param contest_id ID конкурса
+    @return HTMLResponse
+    """
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
@@ -204,192 +209,88 @@ def render_success_page(channel_title: str) -> HTMLResponse:
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Авторизация успешна</title>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+            <script src="https://telegram.org/js/telegram-web-app.js"></script>
             <style>
-                * {{
+                body {{
                     margin: 0;
                     padding: 0;
-                    box-sizing: border-box;
-                }}
-                
-                body {{
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                    background: linear-gradient(135deg, #0a0a0f 0%, #111118 50%, #1a1a24 100%);
-                    background-attachment: fixed;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                     min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 0;
-                    padding: 20px;
-                    color: #ffffff;
+                    color: #fff;
                 }}
-                
                 .container {{
-                    background: rgba(26, 26, 36, 0.95);
-                    backdrop-filter: blur(16px);
-                    -webkit-backdrop-filter: blur(16px);
-                    border: 1px solid rgba(255, 255, 255, 0.08);
-                    border-radius: 1.25rem;
-                    padding: 2.5rem;
-                    max-width: 500px;
-                    width: 100%;
                     text-align: center;
-                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-                    animation: slideUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+                    padding: 2rem;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 1rem;
+                    backdrop-filter: blur(10px);
+                    max-width: 400px;
                 }}
-                
-                @keyframes slideUp {{
-                    from {{
-                        opacity: 0;
-                        transform: translateY(30px);
-                    }}
-                    to {{
-                        opacity: 1;
-                        transform: translateY(0);
-                    }}
-                }}
-                
-                .icon {{
-                    font-size: 5rem;
-                    margin-bottom: 1.5rem;
-                    animation: scaleInBounce 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-                    display: inline-block;
-                    filter: drop-shadow(0 4px 8px rgba(16, 185, 129, 0.3));
-                }}
-                
-                @keyframes scaleInBounce {{
-                    0% {{
-                        opacity: 0;
-                        transform: scale(0.3);
-                    }}
-                    50% {{
-                        transform: scale(1.1);
-                    }}
-                    100% {{
-                        opacity: 1;
-                        transform: scale(1);
-                    }}
-                }}
-                
-                h1 {{
-                    color: #ffffff;
+                .success-icon {{
+                    font-size: 4rem;
                     margin-bottom: 1rem;
-                    font-size: 1.625rem;
-                    font-weight: 700;
-                    letter-spacing: -0.02em;
                 }}
-                
-                .description {{
-                    color: #b0b0c0;
-                    margin-bottom: 1.5rem;
-                    font-size: 0.9375rem;
-                    line-height: 1.6;
+                h1 {{
+                    margin: 0 0 1rem 0;
+                    font-size: 1.5rem;
                 }}
-                
-                .channel {{
-                    background: rgba(16, 185, 129, 0.15);
-                    border: 1px solid rgba(16, 185, 129, 0.3);
-                    padding: 1rem;
-                    border-radius: 0.75rem;
-                    margin: 1.5rem 0;
-                    font-weight: 600;
-                    color: #10b981;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 0.5rem;
-                    font-size: 0.9375rem;
+                p {{
+                    margin: 0.5rem 0;
+                    opacity: 0.9;
                 }}
-                
-                .hint {{
-                    color: #707080;
-                    font-size: 0.875rem;
+                .channel-name {{
+                    font-weight: bold;
+                    font-size: 1.2rem;
+                    margin: 1rem 0;
+                }}
+                .loading {{
                     margin-top: 1.5rem;
-                    line-height: 1.5;
-                }}
-                
-                .btn {{
-                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                    color: white;
-                    border: none;
-                    padding: 1rem 2rem;
-                    border-radius: 0.75rem;
-                    font-size: 1rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    margin-top: 1.5rem;
-                    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
-                    box-shadow: 0 0 20px rgba(99, 102, 241, 0.25);
-                    letter-spacing: 0.01em;
-                }}
-                
-                .btn:hover {{
-                    transform: translateY(-2px) scale(1.02);
-                    box-shadow: 0 0 30px rgba(99, 102, 241, 0.4), 0 10px 15px -3px rgba(0, 0, 0, 0.6);
-                }}
-                
-                .btn:active {{
-                    transform: translateY(0) scale(1);
+                    font-size: 0.9rem;
+                    opacity: 0.8;
                 }}
             </style>
         </head>
         <body>
             <div class="container">
-                <div class="icon">✅</div>
+                <div class="success-icon">✅</div>
                 <h1>Авторизация успешна!</h1>
-                <p class="description">Вы успешно авторизовались через YouTube</p>
-                <div class="channel">
-                    <span>📺</span>
-                    <span>{channel_title}</span>
-                </div>
-                <p class="hint">Вы можете закрыть это окно и вернуться в Telegram</p>
-                <button class="btn" id="closeBtn">Закрыть окно</button>
+                <p>Ваш YouTube канал подключен:</p>
+                <p class="channel-name">{channel_title}</p>
+                <p class="loading">Возвращаемся на страницу регистрации...</p>
             </div>
             <script>
                 (function() {{
-                    const closeBtn = document.getElementById('closeBtn');
-                    
-                    function tryClose() {{
-                        // Способ 1: Telegram WebApp API
-                        if (window.Telegram && window.Telegram.WebApp) {{
+                    // Проверяем, открыто ли в Telegram WebApp
+                    if (typeof Telegram !== 'undefined' && Telegram.WebApp) {{
+                        const tg = Telegram.WebApp;
+                        tg.ready();
+                        tg.expand();
+                        
+                        // Пытаемся закрыть окно и обновить родительскую страницу
+                        // Если это не работает, делаем редирект
+                        setTimeout(function() {{
                             try {{
-                                window.Telegram.WebApp.close();
-                                return true;
-                            }} catch(e) {{
-                                console.log('Telegram.WebApp.close() failed:', e);
+                                // Пытаемся закрыть WebApp (если открыт в отдельном окне)
+                                if (tg.close) {{
+                                    tg.close();
+                                }}
+                            }} catch (e) {{
+                                console.log('Не удалось закрыть WebApp, делаем редирект');
                             }}
-                        }}
-                        
-                        // Способ 2: window.close() для popup окон
-                        try {{
-                            if (window.opener && !window.opener.closed) {{
-                                window.close();
-                                return true;
-                            }}
-                        }} catch(e) {{
-                            console.log('window.close() failed:', e);
-                        }}
-                        
-                        return false;
+                            
+                            // Редирект на страницу регистрации
+                            window.location.href = '{redirect_url}';
+                        }}, 1500);
+                    }} else {{
+                        // Если не в Telegram, просто редиректим
+                        setTimeout(function() {{
+                            window.location.href = '{redirect_url}';
+                        }}, 1500);
                     }}
-                    
-                    closeBtn.addEventListener('click', function() {{
-                        const closed = tryClose();
-                        
-                        if (!closed) {{
-                            // Если не удалось закрыть, показываем сообщение
-                            const hint = document.querySelector('.hint');
-                            if (hint) {{
-                                hint.innerHTML = 'Пожалуйста, закройте это окно вручную и вернитесь в Telegram.<br>Авторизация уже завершена!';
-                                hint.style.color = '#10b981';
-                                hint.style.fontWeight = '600';
-                            }}
-                            closeBtn.textContent = '✓ Готово';
-                            closeBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
-                            closeBtn.disabled = true;
-                        }}
-                    }});
                 }})();
             </script>
         </body>
@@ -508,14 +409,6 @@ async def youtube_callback(
         # Создаем credentials
         credentials = create_credentials(token_response)
         
-        # Сохраняем токены пользователя
-        user_tokens[user_id] = {
-            'token': access_token,
-            'refresh_token': refresh_token,
-            'credentials': credentials,
-            'timestamp': datetime.now()
-        }
-        
         # Получаем информацию о канале
         channel_info = await get_youtube_channel_info(credentials)
         
@@ -588,7 +481,26 @@ async def youtube_callback(
         
         logger.info(f"OAuth completed successfully for user {user_id}")
         
-        return render_success_page(channel_title)
+        # Получаем информацию о боте для формирования ссылки
+        bot_username = None
+        try:
+            from aiogram import Bot
+            bot = Bot(token=config.bot_token)
+            bot_info = await bot.get_me()
+            bot_username = bot_info.username
+            await bot.session.close()
+        except Exception as e:
+            logger.warning(f"Не удалось получить информацию о боте: {e}")
+        
+        # Формируем URL для редиректа обратно на страницу регистрации
+        if bot_username:
+            # Используем startapp для открытия WebApp напрямую
+            redirect_url = f"https://t.me/{bot_username}?startapp=contest_{contest_id}"
+        else:
+            # Fallback: используем прямой URL (если startapp не работает)
+            redirect_url = f"{config.webapp_url}?tgWebAppData="
+        
+        return render_success_page_with_redirect(channel_title, redirect_url, contest_id)
         
     except HTTPException:
         raise
@@ -598,6 +510,49 @@ async def youtube_callback(
             "Ошибка авторизации",
             "Произошла ошибка при обмене кода на токен",
             str(e)
+        )
+
+
+@router.delete("/disconnect")
+async def disconnect_youtube(
+    user_id: int = Query(..., description="ID пользователя"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Отвязать YouTube аккаунт пользователя
+    
+    @param user_id ID пользователя Telegram
+    @param db сессия БД
+    @return результат отвязки
+    """
+    try:
+        result = await db.execute(
+            select(YouTubeCredentials).where(YouTubeCredentials.user_id == user_id)
+        )
+        credentials = result.scalar_one_or_none()
+        
+        if not credentials:
+            raise HTTPException(
+                status_code=404,
+                detail="YouTube аккаунт не привязан"
+            )
+        
+        # Правильный способ удаления в async SQLAlchemy
+        from sqlalchemy import delete
+        await db.execute(delete(YouTubeCredentials).where(YouTubeCredentials.user_id == user_id))
+        await db.commit()
+        
+        logger.info(f"YouTube аккаунт отвязан для пользователя {user_id}")
+        
+        return {"success": True, "message": "YouTube аккаунт успешно отвязан"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка отвязки YouTube аккаунта: {e}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Ошибка при отвязке YouTube аккаунта"
         )
 
 
@@ -679,10 +634,6 @@ async def get_user_credentials(user_id: int, db: Optional[AsyncSession] = None) 
                 return Credentials(**creds_dict)
         except Exception as e:
             logger.error(f"Error getting credentials from DB for user {user_id}: {e}", exc_info=True)
-    
-    # Если в БД нет, проверяем временное хранилище
-    if user_id in user_tokens:
-        return user_tokens[user_id].get('credentials')
     
     return None
 

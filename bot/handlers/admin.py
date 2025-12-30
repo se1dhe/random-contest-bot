@@ -3,7 +3,7 @@
 """
 import logging
 from aiogram import Router, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, CommandStart
 from aiogram.filters.command import CommandObject
 from shared.config import config
@@ -25,17 +25,6 @@ def get_admin_webapp_url() -> str:
     return os.getenv("WEBAPP_URL", "http://localhost:8000") + "/admin"
 
 
-def get_webapp_url() -> str:
-    """
-    Получить базовый URL вебаппа
-    
-    @return URL вебаппа
-    """
-    if config.ngrok_enabled and config.ngrok_domain:
-        return f"https://{config.ngrok_domain}"
-    return os.getenv("WEBAPP_URL", "http://localhost:8000")
-
-
 @router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
     """
@@ -47,18 +36,22 @@ async def cmd_start(message: Message, command: CommandObject):
     logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
     args = command.args  # Получаем аргументы после /start
     
-    # Обработка deep link для регистрации в конкурсе
+    # Обработка startapp для регистрации в конкурсе (используется из каналов)
+    # Формат: /start contest_1 или /startapp contest_1
     if args and args.startswith("contest_"):
         try:
             contest_id = int(args.split("_")[1])
-            webapp_url = get_webapp_url()
-            register_url = f"{webapp_url}/register?contest_id={contest_id}"
+            bot_info = await message.bot.get_me()
+            bot_username = bot_info.username
             
-            # Отправляем Web App кнопку в личный чат
+            # Используем startapp для открытия WebApp напрямую
+            register_url = f"https://t.me/{bot_username}?startapp=contest_{contest_id}"
+            
+            # Отправляем URL кнопку в личный чат
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
                     text="🎯 Зарегистрироваться в конкурсе",
-                    web_app=WebAppInfo(url=register_url)
+                    url=register_url
                 )]
             ])
             
@@ -72,18 +65,22 @@ async def cmd_start(message: Message, command: CommandObject):
             # Неверный формат аргументов
             pass
     
-    # Обработка deep link для просмотра результатов
+    # Обработка startapp для просмотра результатов (используется из каналов)
+    # Формат: /start results_1 или /startapp results_1
     if args and args.startswith("results_"):
         try:
             contest_id = int(args.split("_")[1])
-            webapp_url = get_webapp_url()
-            results_url = f"{webapp_url}/results?contest_id={contest_id}"
+            bot_info = await message.bot.get_me()
+            bot_username = bot_info.username
             
-            # Отправляем Web App кнопку в личный чат
+            # Используем startapp для открытия WebApp напрямую
+            results_url = f"https://t.me/{bot_username}?startapp=results_{contest_id}"
+            
+            # Отправляем URL кнопку в личный чат
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
                     text="📊 Посмотреть результаты",
-                    web_app=WebAppInfo(url=results_url)
+                    url=results_url
                 )]
             ])
             

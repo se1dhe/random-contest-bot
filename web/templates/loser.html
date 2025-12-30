@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Результаты конкурса</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/webapp.css">
+</head>
+<body>
+    <div class="webapp-container">
+        {% if contest.image_path %}
+        <div style="margin-bottom: 1rem;">
+            <img src="/{{ contest.image_path }}" alt="Изображение конкурса" style="width: 100%; border-radius: 0.5rem; max-height: 300px; object-fit: cover;">
+        </div>
+        {% endif %}
+        
+        <div class="content-card" style="text-align: center;">
+            <h2 style="color: #fff; margin-bottom: 1rem;">😢 Увы</h2>
+            <p style="color: #aaa; margin-bottom: 1rem;">
+                В этот раз не повезло
+            </p>
+            <p style="color: #aaa; margin-bottom: 1rem;">
+                Следите за новыми конкурсами!
+            </p>
+        </div>
+        
+        <div class="content-card">
+            <h3 style="color: #fff; margin-bottom: 1rem;">🏆 Победители:</h3>
+            {% for prize in contest.prizes|sort(attribute='place') %}
+                {% if prize.winner_user_id %}
+                <div style="margin-bottom: 1rem; padding: 1rem; background: rgba(255, 255, 255, 0.05); border-radius: 0.5rem;">
+                    <p style="color: #fff; margin-bottom: 0.5rem;">
+                        {% if prize.place == 1 %}🥇{% elif prize.place == 2 %}🥈{% elif prize.place == 3 %}🥉{% else %}🏆{% endif %}
+                        <strong>{{ prize.place }} место:</strong> {{ prize.title }}
+                    </p>
+                    <p style="color: #aaa;">
+                        Победитель: 
+                        {% if prize.winner_username %}
+                        <a href="https://t.me/{{ prize.winner_username }}" style="color: #667eea;">@{{ prize.winner_username }}</a>
+                        {% elif prize.winner_firstname %}
+                        <a href="tg://user?id={{ prize.winner_user_id }}" style="color: #667eea;">{{ prize.winner_firstname }}</a>
+                        {% else %}
+                        не указан
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    
+    <script>
+        const tg = Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        const theme = tg.themeParams;
+        if (theme.bg_color) {
+            document.body.style.backgroundColor = theme.bg_color;
+        }
+    </script>
+</body>
+</html>
