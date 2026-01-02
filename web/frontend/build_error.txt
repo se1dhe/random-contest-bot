@@ -1,0 +1,19 @@
+vite v6.4.1 building for production...
+transforming...
+✓ 22 modules transformed.
+✗ Build failed in 385ms
+error during build:
+[vite]: Rollup failed to resolve import "canvas-confetti" from "/Users/se1dhe/projects/random-contest-bot/web/frontend/src/pages/RegistrationPage.tsx".
+This is most likely unintended because it can break your application at runtime.
+If you do want to externalize this module explicitly add it to
+`build.rollupOptions.external`
+    at viteLog (file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46374:15)
+    at file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46432:18
+    at onwarn (file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/@vitejs/plugin-react/dist/index.js:90:7)
+    at file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46430:7
+    at onRollupLog (file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46422:5)
+    at onLog (file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:46072:7)
+    at file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/rollup/dist/es/shared/node-entry.js:21032:32
+    at Object.logger [as onLog] (file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/rollup/dist/es/shared/node-entry.js:22919:9)
+    at ModuleLoader.handleInvalidResolvedId (file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/rollup/dist/es/shared/node-entry.js:21663:26)
+    at file:///Users/se1dhe/projects/random-contest-bot/web/frontend/node_modules/rollup/dist/es/shared/node-entry.js:21621:26

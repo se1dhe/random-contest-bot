@@ -35,15 +35,19 @@ async def get_contest(
     @param db сессия БД
     @return информация о конкурсе
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
     
     if not contest:
+        logger.warning(f"Contest {contest_id} not found")
         raise HTTPException(status_code=404, detail="Конкурс не найден")
     
     # Проверяем статус конкурса
-    # Проверяем, активен ли конкурс
     if contest.status != ContestStatus.ACTIVE:
+        logger.warning(f"Contest {contest_id} has invalid status: {contest.status}")
         if contest.status == ContestStatus.FINISHED or contest.status == ContestStatus.RESULTS_PUBLISHED:
             raise HTTPException(
                 status_code=400,
@@ -72,8 +76,11 @@ async def get_contest(
             from datetime import datetime
             now_db = datetime(now_db.year, now_db.month, now_db.day, now_db.hour, now_db.minute, now_db.second, now_db.microsecond)
         
+        logger.info(f"Contest {contest_id} end_date: {contest.end_date}, now_db: {now_db}")
+        
         # Сравниваем даты (обе должны быть naive)
         if contest.end_date < now_db:
+            logger.warning(f"Contest {contest_id} expired: {contest.end_date} < {now_db}")
             raise HTTPException(
                 status_code=400, 
                 detail="Конкурс уже завершен"
@@ -139,12 +146,11 @@ async def get_contest_info(
         "id": contest.id,
         "title": contest.title,
         "description": contest.description,
-        "channel_id": contest.channel_id,
-        "channel_title": contest.channel.channel_title if contest.channel else None,
-        "end_date": contest.end_date.isoformat() if contest.end_date else None,
-        "status": contest.status.value,
         "prize_count": contest.prize_count,
         "participants_count": participants_count,
+        "image_url": contest.image_path,  # Фронтенд ожидает image_url
+        "end_date": contest.end_date.isoformat() if contest.end_date else None,
+        "status": contest.status.value,
         "prizes": [
             {
                 "id": prize.id,
@@ -244,11 +250,14 @@ async def auto_check(
     participant = await participant_service.get_participant(contest_id, user_id)
     if participant:
         return {
+            "is_registered": True,
+            "can_register": False,
             "status": "already_registered",
             "participant": {
                 "registration_number": participant.registration_number,
                 "registered_at": participant.registered_at.isoformat()
-            }
+            },
+            "conditions": []
         }
     
     # 2. Собираем список условий
@@ -302,7 +311,8 @@ async def auto_check(
     
     return {
         "status": "active",
-        "all_met": all_met,
+        "is_registered": False,
+        "can_register": all_met,
         "conditions": conditions
     }
 
@@ -310,7 +320,9 @@ async def auto_check(
 @router.post("/{contest_id}/register")
 async def register_participant(
     contest_id: int,
-    data: dict,
+    data: Optional[dict] = None,
+    user_id: Optional[int] = Query(None),
+    username: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     telegram_service: TelegramService = Depends(get_telegram_service)
 ):
@@ -318,13 +330,19 @@ async def register_participant(
     Зарегистрировать участника в конкурсе
     
     @param contest_id ID конкурса
-    @param data данные регистрации (user_id, username)
+    @param data данные регистрации (body)
+    @param user_id ID пользователя (query)
+    @param username username (query)
     @param db сессия БД
     @param telegram_service сервис Telegram
     @return информация о регистрации
     """
-    user_id = data.get("user_id")
-    username = data.get("username")
+    # Извлекаем user_id из разных источников (фронтенд шлет в query params)
+    body_user_id = data.get("user_id") if data else None
+    user_id = user_id or body_user_id
+    
+    body_username = data.get("username") if data else None
+    username = username or body_username
     
     if not user_id:
         raise HTTPException(status_code=400, detail="Не указан user_id")
