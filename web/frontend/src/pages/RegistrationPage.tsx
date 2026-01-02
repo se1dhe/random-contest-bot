@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 import { useTelegram } from '../hooks/useTelegram';
 import { GlassCard, ConditionItem } from '../components/ui/Cards';
 import { Button } from '../components/ui/Button';
-import { Trophy, Users, Clock, CheckCircle, Crown, Gift } from 'lucide-react';
+import { Trophy, Users, Clock, CheckCircle, Crown, Gift, Calendar } from 'lucide-react';
 import { CountdownTimer } from '../components/ui/CountdownTimer';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -50,6 +50,21 @@ interface Winner {
     firstname: string | null;
 }
 
+interface ResultInfo {
+    contest_title: string;
+    contest_description?: string | null;
+    image_url?: string | null;
+    end_date: string;
+    participants_count: number;
+    winners: Array<{
+        place: number;
+        title: string;
+        user_id: number;
+        username: string | null;
+        firstname: string | null;
+    }>;
+}
+
 export const RegistrationPage: React.FC = () => {
     const [searchParams] = useSearchParams();
     const { initData, hapticFeedback, tg, userId } = useTelegram();
@@ -75,7 +90,18 @@ export const RegistrationPage: React.FC = () => {
         },
         enabled: !!contestId,
     });
-    const contestIsEnded = !!contest?.end_date && new Date(contest.end_date) <= new Date();
+
+    // Always fetch results info as fallback when конкурс завершен
+    const { data: resultsInfo } = useQuery<ResultInfo>({
+        queryKey: ['results-info', contestId, initData, userId],
+        queryFn: async () => {
+            const res = await axios.get(`/api/contests/${contestId}/results-info`, {
+                params: { user_id: userId, _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!contestId && !!initData && !!userId,
+    });
 
     // Synchronize live count with initial data
     useEffect(() => {
@@ -293,6 +319,126 @@ export const RegistrationPage: React.FC = () => {
     }
 
     if (!contest) {
+        if (resultsInfo && resultsInfo.winners && resultsInfo.winners.length > 0) {
+            return (
+                <div className="space-y-6 pb-10">
+                    <header className="space-y-4">
+                        {resultsInfo.image_url ? (
+                            <motion.img
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                src={resultsInfo.image_url}
+                                alt={resultsInfo.contest_title}
+                                className="w-full aspect-video object-cover rounded-2xl shadow-2xl"
+                            />
+                        ) : (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="w-full aspect-video bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-2xl flex items-center justify-center border border-amber-500/20"
+                            >
+                                <Trophy size={80} className="text-amber-500/40" />
+                            </motion.div>
+                        )}
+                        <div className="text-center space-y-3">
+                            <motion.div
+                                initial={{ scale: 0.5, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="inline-flex p-3 bg-amber-500/10 rounded-full text-amber-500"
+                            >
+                                <Trophy size={32} />
+                            </motion.div>
+                            <h1 className="text-2xl font-bold tracking-tight">{resultsInfo.contest_title}</h1>
+                            <div className="flex items-center justify-center gap-4 text-sm text-white/60">
+                                <div className="flex items-center gap-1.5">
+                                    <Calendar size={14} />
+                                    <span>{new Date(resultsInfo.end_date).toLocaleDateString()}</span>
+                                </div>
+                                <div className="w-1 h-1 rounded-full bg-white/20" />
+                                <div className="flex items-center gap-1.5">
+                                    <Users size={14} />
+                                    <span>{resultsInfo.participants_count} участников</span>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between px-1">
+                            <h2 className="text-sm font-bold uppercase tracking-wider text-white/40">
+                                Победители
+                            </h2>
+                        </div>
+                        <div className="space-y-3">
+                            <AnimatePresence mode="popLayout">
+                                {resultsInfo.winners.map((winner, idx) => (
+                                    <motion.div
+                                        key={idx}
+                                        initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                                        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                                        className="relative overflow-hidden"
+                                    >
+                                        <GlassCard className={cn(
+                                            'p-4 flex items-center justify-between transition-all',
+                                            winner.place === 1 && 'bg-amber-500/10 border-amber-500/30 shadow-lg shadow-amber-500/10'
+                                        )}>
+                                            <div className="flex items-center space-x-4">
+                                                <motion.div
+                                                    initial={{ rotate: -180, scale: 0 }}
+                                                    animate={{ rotate: 0, scale: 1 }}
+                                                    transition={{ delay: 0.2, type: "spring" }}
+                                                    className={cn(
+                                                        'w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg',
+                                                        winner.place === 1
+                                                            ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-white shadow-lg shadow-amber-500/30'
+                                                            : 'bg-white/10 text-white/80'
+                                                    )}
+                                                >
+                                                    {winner.place === 1 ? <Crown size={24} /> : winner.place}
+                                                </motion.div>
+                                                <div className="flex flex-col">
+                                                    <motion.div
+                                                        initial={{ x: -10, opacity: 0 }}
+                                                        animate={{ x: 0, opacity: 1 }}
+                                                        transition={{ delay: 0.3 }}
+                                                        className="font-bold text-white leading-tight"
+                                                    >
+                                                        {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
+                                                    </motion.div>
+                                                    <motion.span
+                                                        initial={{ x: -10, opacity: 0 }}
+                                                        animate={{ x: 0, opacity: 1 }}
+                                                        transition={{ delay: 0.4 }}
+                                                        className="text-xs text-white/50 truncate max-w-[180px]"
+                                                    >
+                                                        {winner.title}
+                                                    </motion.span>
+                                                </div>
+                                            </div>
+                                            <motion.div
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                transition={{ delay: 0.5, type: "spring" }}
+                                                className="flex items-center space-x-2 text-amber-500/60"
+                                            >
+                                                <Gift size={20} />
+                                            </motion.div>
+                                        </GlassCard>
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    </section>
+                    <motion.footer
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-center text-xs text-white/30 pt-4"
+                    >
+                        🎉 Поздравляем всех победителей!
+                    </motion.footer>
+                </div>
+            );
+        }
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 px-6 text-center">
                 <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center text-red-500">
@@ -520,25 +666,6 @@ export const RegistrationPage: React.FC = () => {
                                     <p className="p-4 text-center text-white/40 text-sm">Условий пока нет</p>
                                 )}
                             </GlassCard>
-                            <div className="px-1">
-                                {contestIsEnded ? (
-                                    <Button
-                                        variant="secondary"
-                                        className="w-full"
-                                        onClick={handleCountdownEnd}
-                                    >
-                                        Посмотреть результаты
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        className="w-full"
-                                        disabled={isRegistering || !status?.can_register || isSuccess}
-                                        onClick={handleRegister}
-                                    >
-                                        Зарегистрироваться
-                                    </Button>
-                                )}
-                            </div>
                         </section>
 
                         <footer className="pt-2">
