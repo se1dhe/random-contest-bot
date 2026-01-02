@@ -271,22 +271,38 @@ async def auto_check(
     
     # Условие: Основной канал
     main_chat = await telegram_service.get_chat_info(contest.channel_id)
+    main_invite = None
+    if not (main_chat and main_chat.get('username')):
+        try:
+            invite = await telegram_service.bot.create_chat_invite_link(chat_id=contest.channel_id, name=f"{contest.title} invite", creates_join_request=False)
+            main_invite = getattr(invite, "invite_link", None)
+        except Exception:
+            main_invite = None
     conditions.append({
         "type": "telegram",
         "id": contest.channel_id,
         "title": main_chat['title'] if main_chat else "Основной канал",
         "username": main_chat['username'] if main_chat else None,
+        "invite_link": main_invite,
         "met": await telegram_service.check_subscription(user_id, contest.channel_id)
     })
     
     # Условие: Спонсоры
     if contest.sponsors:
         for sponsor in contest.sponsors:
+            invite_link = None
+            if not sponsor.channel_username:
+                try:
+                    inv = await telegram_service.bot.create_chat_invite_link(chat_id=sponsor.channel_id, name=f"{contest.title} sponsor", creates_join_request=False)
+                    invite_link = getattr(inv, "invite_link", None)
+                except Exception:
+                    invite_link = None
             conditions.append({
                 "type": "telegram",
                 "id": sponsor.channel_id,
                 "title": sponsor.channel_title or "Канал спонсора",
                 "username": sponsor.channel_username,
+                "invite_link": invite_link,
                 "met": await telegram_service.check_subscription(user_id, sponsor.channel_id)
             })
             
@@ -645,5 +661,4 @@ async def get_results_info(
             for p in sorted(winners, key=lambda x: x.place)
         ] if winners else []
     }
-
 

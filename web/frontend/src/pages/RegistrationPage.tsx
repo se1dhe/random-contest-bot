@@ -24,6 +24,7 @@ interface ContestInfo {
     end_date: string;
     prize_count: number;
     participants_count: number;
+    prizes?: Array<{ id: number; place: number; title: string; description?: string | null }>;
 }
 
 interface AutoCheckResponse {
@@ -33,6 +34,8 @@ interface AutoCheckResponse {
         type: 'telegram' | 'youtube';
         id: string | number;
         title: string;
+        username?: string | null;
+        invite_link?: string | null;
         met: boolean;
         connected?: boolean;
     }>;
@@ -57,6 +60,7 @@ export const RegistrationPage: React.FC = () => {
     const [winners, setWinners] = useState<Winner[]>([]);
     const [revealedWinners, setRevealedWinners] = useState<number>(0);
     const [drawComplete, setDrawComplete] = useState(false);
+    const [prizesOpen, setPrizesOpen] = useState(false);
 
     const contestId = searchParams.get('contest_id');
 
@@ -89,9 +93,36 @@ export const RegistrationPage: React.FC = () => {
             });
             return res.data;
         },
-        enabled: !!contestId && !!initData && !isSuccess && !contestEnded,
-        refetchInterval: (query) => (query.state.data?.is_registered || isSuccess || contestEnded) ? false : 3000,
+        enabled: !!contestId && !!initData,
+        refetchInterval: 3000,
     });
+
+    const handleRegister = React.useCallback(async () => {
+        setIsRegistering(true);
+        try {
+            await axios.post(`/api/contests/${contestId}/register`, {}, {
+                headers: { 'X-Telegram-Init-Data': initData },
+                params: { _auth: initData, user_id: userId }
+            });
+            hapticFeedback('medium');
+            refetchStatus();
+        } catch (err) {
+            console.error('Registration failed', err);
+        } finally {
+            setIsRegistering(false);
+        }
+    }, [contestId, initData, userId, hapticFeedback, refetchStatus]);
+
+    const handleSuccess = React.useCallback(() => {
+        setIsSuccess(true);
+        hapticFeedback('heavy');
+        confetti({
+            particleCount: 150,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#8b5cf6', '#d946ef', '#3b82f6']
+        });
+    }, [hapticFeedback]);
 
     // Auto-registration logic
     useEffect(() => {
@@ -104,31 +135,53 @@ export const RegistrationPage: React.FC = () => {
         if (status?.participants_count !== undefined) {
             setLiveParticipantsCount(status.participants_count);
         }
-    }, [status, isRegistering, isSuccess]);
+    }, [status, isRegistering, isSuccess, handleRegister, handleSuccess]);
 
     // WebSocket for live updates
     useEffect(() => {
         if (!contestId) return;
 
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/ws/${contestId}`;
-        const socket = new WebSocket(wsUrl);
+        let socket: WebSocket | null = null;
+        let reconnectTimer: number | null = null;
 
-        socket.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'new_registration') {
-                    setLiveParticipantsCount(data.participants_count);
+        const connect = () => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/ws/${contestId}`;
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                if (reconnectTimer) {
+                    window.clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
                 }
-            } catch (err) {
-                console.error('WS Message Error:', err);
-            }
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_registration') {
+                        setLiveParticipantsCount(data.participants_count);
+                    }
+                } catch (err) {
+                    console.error('WS Message Error:', err);
+                }
+            };
+
+            socket.onerror = (err) => console.error('WebSocket Error:', err);
+
+            socket.onclose = () => {
+                // Автоматический реконнект через 2 секунды
+                reconnectTimer = window.setTimeout(() => connect(), 2000);
+            };
         };
 
-        socket.onerror = (err) => console.error('WebSocket Error:', err);
+        connect();
 
         return () => {
-            if (socket.readyState === WebSocket.OPEN) {
+            if (reconnectTimer) {
+                window.clearTimeout(reconnectTimer);
+            }
+            if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.close();
             }
         };
@@ -195,40 +248,24 @@ export const RegistrationPage: React.FC = () => {
         revealNextWinner(0);
     };
 
-    const handleRegister = async () => {
-        setIsRegistering(true);
-        try {
-            await axios.post(`/api/contests/${contestId}/register`, {}, {
-                headers: { 'X-Telegram-Init-Data': initData },
-                params: { _auth: initData, user_id: userId }
-            });
-            hapticFeedback('medium');
-            refetchStatus();
-        } catch (err) {
-            console.error('Registration failed', err);
-        } finally {
-            setIsRegistering(false);
-        }
-    };
-
-    const handleSuccess = () => {
-        setIsSuccess(true);
-        hapticFeedback('heavy');
-        confetti({
-            particleCount: 150,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#8b5cf6', '#d946ef', '#3b82f6']
-        });
-    };
-
-    const handleConditionAction = (condition: any) => {
+    const handleConditionAction = (condition: AutoCheckResponse['conditions'][number]) => {
         hapticFeedback('light');
         if (condition.type === 'telegram') {
-            const url = condition.id.toString().startsWith('-100')
-                ? `https://t.me/c/${condition.id.toString().replace('-100', '')}`
-                : `https://t.me/${condition.title.replace('@', '')}`;
-            tg.openLink(url);
+            let url = '';
+            if (condition.username && condition.username.trim().length > 0) {
+                const uname = condition.username.replace('@', '').trim();
+                url = `https://t.me/${uname}`;
+            } else if (condition.invite_link && condition.invite_link.trim().length > 0) {
+                url = condition.invite_link.trim();
+            } else {
+                const idStr = condition.id.toString();
+                if (idStr.startsWith('-100')) {
+                    url = `https://t.me/c/${idStr.replace('-100', '')}`;
+                } else {
+                    url = `https://t.me/${idStr}`;
+                }
+            }
+            tg.openTelegramLink(url);
         } else if (condition.type === 'youtube') {
             if (condition.connected) {
                 let url = '';
@@ -357,7 +394,7 @@ export const RegistrationPage: React.FC = () => {
                                             <div className="flex flex-col cursor-pointer" onClick={() => {
                                                 const url = winner.username
                                                     ? `https://t.me/${winner.username}`
-                                                    : `https://t.me/user?id=${winner.user_id}`;
+                                                    : `tg://user?id=${winner.user_id}`;
                                                 tg.openTelegramLink(url);
                                             }}>
                                                 <motion.div
@@ -424,10 +461,14 @@ export const RegistrationPage: React.FC = () => {
                             <Users size={14} className="text-primary" />
                             <span>{liveParticipantsCount ?? contest.participants_count} участников</span>
                         </div>
-                        <div className="flex items-center space-x-1.5">
+                        <button
+                            type="button"
+                            className="flex items-center space-x-1.5 hover:text-white transition-colors"
+                            onClick={() => setPrizesOpen(true)}
+                        >
                             <Trophy size={14} className="text-amber-400" />
                             <span>{contest.prize_count} призов</span>
-                        </div>
+                        </button>
                     </div>
                 </div>
             </header>
@@ -507,6 +548,48 @@ export const RegistrationPage: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+            {prizesOpen && (
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50">
+                    <div className="w-full sm:max-w-md bg-[#1c1c1e] border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl">
+                        <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                            <div className="flex items-center space-x-2 text-white">
+                                <Trophy size={18} className="text-amber-400" />
+                                <span className="text-sm font-bold">Призы конкурса</span>
+                            </div>
+                            <button
+                                className="text-white/50 hover:text-white transition-colors"
+                                onClick={() => setPrizesOpen(false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="p-4 space-y-3 max-h-[60vh] overflow-auto">
+                            {contest.prizes && contest.prizes.length > 0 ? (
+                                contest.prizes.map((p) => (
+                                    <GlassCard key={p.id ?? `${p.place}-${p.title}`} className="p-3">
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400 font-bold">
+                                                {p.place}
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="text-sm font-bold">{p.title}</div>
+                                                {p.description && (
+                                                    <div className="text-xs text-white/60 mt-1">{p.description}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </GlassCard>
+                                ))
+                            ) : (
+                                <p className="text-white/40 text-sm">Призы не настроены</p>
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-white/10">
+                            <Button variant="secondary" className="w-full" onClick={() => setPrizesOpen(false)}>Закрыть</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

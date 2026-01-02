@@ -1,7 +1,7 @@
 """
 Модель конкурса
 """
-from sqlalchemy import Column, String, DateTime, Integer, BigInteger, ForeignKey, Enum, Text
+from sqlalchemy import Column, String, DateTime, Integer, BigInteger, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.orm import relationship
 import enum
 from .base import BaseModel
@@ -38,6 +38,7 @@ class Contest(BaseModel):
     youtube_channel_id = Column(String(255), nullable=True)  # ID YouTube канала для обязательной подписки
     youtube_subscription_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней подписки
     image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
+    post_to_sponsors = Column(Boolean, default=False, nullable=False)
     
     # Связи
     channel = relationship("Channel", backref="contests")
@@ -47,4 +48,3 @@ class Contest(BaseModel):
     
     def __repr__(self):
         return f"<Contest(id={self.id}, title={self.title}, status={self.status.value})>"
-

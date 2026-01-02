@@ -8,7 +8,8 @@ import {
     Trash2,
     ChevronLeft,
     ChevronRight,
-    Youtube
+    Youtube,
+    Check
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { GlassCard } from './ui/Cards';
@@ -21,8 +22,18 @@ interface Prize {
 }
 
 interface Sponsor {
-    channel_id: string;
+    channel_id: number;
     channel_title: string;
+}
+interface AdminChannel {
+    channel_id: number;
+    channel_title: string;
+    channel_username?: string | null;
+}
+interface AdminYoutubeChannel {
+    channel_id: string;
+    title: string;
+    description?: string;
 }
 
 interface ContestFormProps {
@@ -44,6 +55,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [drawMethod, setDrawMethod] = useState('random');
     const [prizes, setPrizes] = useState<Prize[]>([{ place: 1, title: '', description: '' }]);
     const [sponsors, setSponsors] = useState<Sponsor[]>([]); // Initialize properly
+    const [postToSponsors, setPostToSponsors] = useState(false);
     const [requireYoutube, setRequireYoutube] = useState(false);
     const [youtubeDays, setYoutubeDays] = useState(0);
     const [image, setImage] = useState<File | null>(null);
@@ -54,7 +66,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
 
 
     // Queries
-    const { data: channels } = useQuery<any[]>({
+    const { data: channels } = useQuery<AdminChannel[]>({
         queryKey: ['admin_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/channels', {
@@ -66,7 +78,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         enabled: !!initData,
     });
 
-    const { data: youtubeChannels } = useQuery<any[]>({
+    const { data: youtubeChannels } = useQuery<AdminYoutubeChannel[]>({
         queryKey: ['admin_youtube_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/youtube-channels', {
@@ -88,7 +100,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         }
     };
 
-    const toggleSponsor = (ch: any) => {
+    const toggleSponsor = (ch: AdminChannel) => {
         if (sponsors.find(s => s.channel_id === ch.channel_id)) {
             setSponsors(sponsors.filter(s => s.channel_id !== ch.channel_id));
         } else {
@@ -108,7 +120,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         setPrizeCount(newPrizes.length);
     };
 
-    const updatePrize = (idx: number, field: keyof Prize, value: any) => {
+    const updatePrize = (idx: number, field: keyof Prize, value: string) => {
         const newPrizes = [...prizes];
         newPrizes[idx] = { ...newPrizes[idx], [field]: value };
         setPrizes(newPrizes);
@@ -129,6 +141,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         formData.append('youtube_subscription_days_required', youtubeDays.toString());
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
+        formData.append('post_to_sponsors', postToSponsors.toString());
         if (requireYoutube) formData.append('youtube_channel_id', youtubeChannelId);
         if (image) formData.append('image', image);
 
@@ -365,6 +378,19 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                         <p className="text-[10px] text-white/20 italic">Нет доступных каналов для спонсорства</p>
                                     )}
                                 </div>
+                                {sponsors.length > 0 && (
+                                    <div className="flex items-center space-x-3 pt-2 px-1">
+                                        <div 
+                                            className={`w-5 h-5 rounded border cursor-pointer flex items-center justify-center transition-colors ${postToSponsors ? 'bg-primary border-primary' : 'border-white/20'}`}
+                                            onClick={() => setPostToSponsors(!postToSponsors)}
+                                        >
+                                            {postToSponsors && <Check size={14} className="text-white" />}
+                                        </div>
+                                        <span className="text-sm text-white/80 cursor-pointer select-none" onClick={() => setPostToSponsors(!postToSponsors)}>
+                                            Постить в каналы спонсоров
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* YouTube Condition */}

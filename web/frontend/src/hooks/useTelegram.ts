@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
 
 export interface TelegramUser {
@@ -11,20 +11,14 @@ export interface TelegramUser {
 }
 
 export const useTelegram = () => {
-    const [user, setUser] = useState<TelegramUser | null>(null);
-    const [startParam, setStartParam] = useState<string | null>(null);
+    const user: TelegramUser | null = WebApp.initDataUnsafe.user ? (WebApp.initDataUnsafe.user as TelegramUser) : null;
+    const startParam: string | null = WebApp.initDataUnsafe.start_param || null;
 
     useEffect(() => {
         WebApp.ready();
         WebApp.expand();
 
-        if (WebApp.initDataUnsafe.user) {
-            setUser(WebApp.initDataUnsafe.user as TelegramUser);
-        }
-
-        if (WebApp.initDataUnsafe.start_param) {
-            setStartParam(WebApp.initDataUnsafe.start_param);
-        }
+        // state initialized from WebApp.initDataUnsafe via lazy initializers
     }, []);
 
     const onClose = () => {

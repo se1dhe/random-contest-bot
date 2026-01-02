@@ -35,19 +35,51 @@ export const AdminPage: React.FC = () => {
     const { initData, hapticFeedback } = useTelegram();
     const [activeTab, setActiveTab] = useState<'dash' | 'contests' | 'channels'>('dash');
     const [isCreating, setIsCreating] = useState(false);
-    const [selectedContest, setSelectedContest] = useState<any>(null);
+    interface AdminContest {
+        id: number;
+        title: string;
+        status: string;
+        prize_count: number;
+        participants_count?: number;
+        end_date: string;
+        prizes?: Array<{ id?: number; place: number; title?: string; description?: string }>;
+        channel?: { channel_title?: string };
+        require_youtube_subscription?: boolean;
+        youtube_subscription_days_required?: number;
+    }
+    interface AdminChannel {
+        channel_id: number;
+        channel_title: string;
+        channel_username?: string | null;
+    }
+    interface AdminYoutubeChannel {
+        channel_id: string;
+        title: string;
+        description?: string;
+    }
+    interface AnalyticsOverview {
+        total_contests: number;
+        active_contests: number;
+        completed_contests: number;
+        total_participants: number;
+    }
+    interface GrowthPoint {
+        date: string;
+        participants: number;
+    }
+    const [selectedContest, setSelectedContest] = useState<AdminContest | null>(null);
     const [isPublishing, setIsPublishing] = useState(false);
 
     // Channel adding state
     const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | null>(null);
     const [newChannelInput, setNewChannelInput] = useState('');
     const [isAddingChannel, setIsAddingChannel] = useState(false);
-    const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
+    const [activeChannelId, setActiveChannelId] = useState<number | string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-    const { data: contests, isLoading: isContestsLoading, refetch: refetchContests } = useQuery<any[]>({
+    const { data: contests, isLoading: isContestsLoading, refetch: refetchContests } = useQuery<AdminContest[]>({
         queryKey: ['admin_contests', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/contests', {
@@ -59,7 +91,7 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData,
     });
 
-    const { data: channels, refetch: refetchChannels } = useQuery<any[]>({
+    const { data: channels, refetch: refetchChannels } = useQuery<AdminChannel[]>({
         queryKey: ['admin_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/channels', {
@@ -71,7 +103,7 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData,
     });
 
-    const { data: youtubeChannels, refetch: refetchYoutubeChannels } = useQuery<any[]>({
+    const { data: youtubeChannels, refetch: refetchYoutubeChannels } = useQuery<AdminYoutubeChannel[]>({
         queryKey: ['admin_youtube_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/youtube-channels', {
@@ -83,7 +115,7 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData,
     });
 
-    const { data: analytics, refetch: refetchAnalytics } = useQuery<any>({
+    const { data: analytics, refetch: refetchAnalytics } = useQuery<AnalyticsOverview>({
         queryKey: ['admin_analytics', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/analytics/overview', {
@@ -95,7 +127,7 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData
     });
 
-    const { data: analyticsGrowth, refetch: refetchGrowth } = useQuery<any[]>({
+    const { data: analyticsGrowth, refetch: refetchGrowth } = useQuery<GrowthPoint[]>({
         queryKey: ['admin_analytics_growth', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/analytics/growth', {
@@ -107,7 +139,7 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData
     });
 
-    const handleTabChange = (tab: any) => {
+    const handleTabChange = (tab: 'dash' | 'contests' | 'channels') => {
         hapticFeedback('light');
         setActiveTab(tab);
         setIsCreating(false);
@@ -160,10 +192,11 @@ export const AdminPage: React.FC = () => {
             hapticFeedback('heavy');
             setSelectedContest(null);
             refetchContests();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to run contest', err);
             hapticFeedback('rigid');
-            setError(err.response?.data?.detail || 'Ошибка при проведении розыгрыша');
+            const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+            setError(detail || 'Ошибка при проведении розыгрыша');
         } finally {
             setIsPublishing(false);
         }
@@ -181,10 +214,11 @@ export const AdminPage: React.FC = () => {
             hapticFeedback('heavy');
             setSelectedContest(null);
             refetchContests();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to delete contest', err);
             hapticFeedback('rigid');
-            setError(err.response?.data?.detail || 'Ошибка при удалении конкурса');
+            const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+            setError(detail || 'Ошибка при удалении конкурса');
         } finally {
             setIsPublishing(false);
         }
@@ -236,10 +270,16 @@ export const AdminPage: React.FC = () => {
             hapticFeedback('heavy');
             setAddingChannelType(null);
             setNewChannelInput('');
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to add channel', err);
             hapticFeedback('rigid');
-            setError(err.response?.data?.detail || 'Ошибка при добавлении канала');
+            const res = (err as { response?: { status?: number; data?: { detail?: string } } }).response;
+            const detail = res?.data?.detail;
+            if (res?.status === 403) {
+                setError(detail || 'Бот должен быть администратором канала. Добавьте бота в канал и дайте права админа.');
+            } else {
+                setError(detail || 'Ошибка при добавлении канала');
+            }
         } finally {
             setIsAddingChannel(false);
         }
@@ -256,6 +296,23 @@ export const AdminPage: React.FC = () => {
             hapticFeedback('heavy');
         } catch (err) {
             console.error('Failed to delete channel', err);
+            hapticFeedback('rigid');
+        } finally {
+            setActiveChannelId(null);
+        }
+    };
+
+    const handleDeleteYoutubeChannel = async (channelId: string) => {
+        if (!confirm('Вы уверены, что хотите удалить этот YouTube канал?')) return;
+        try {
+            await axios.delete(`/api/admin/youtube-channels/${channelId}`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            refetchYoutubeChannels();
+            hapticFeedback('heavy');
+        } catch (err) {
+            console.error('Failed to delete YouTube channel', err);
             hapticFeedback('rigid');
         } finally {
             setActiveChannelId(null);
@@ -279,10 +336,16 @@ export const AdminPage: React.FC = () => {
             });
             refetchChannels();
             hapticFeedback('heavy');
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to update channel', err);
             hapticFeedback('rigid');
-            setError('Не удалось обновить данные канала');
+            const res = (err as { response?: { status?: number; data?: { detail?: string } } }).response;
+            const detail = res?.data?.detail;
+            if (res?.status === 403) {
+                setError(detail || 'Бот должен быть администратором канала. Добавьте бота в канал и дайте права админа.');
+            } else {
+                setError(detail || 'Не удалось обновить данные канала');
+            }
         } finally {
             setActiveChannelId(null);
         }
@@ -493,7 +556,7 @@ export const AdminPage: React.FC = () => {
                             ].map(tab => (
                                 <button
                                     key={tab.id}
-                                    onClick={() => handleTabChange(tab.id as any)}
+                                    onClick={() => handleTabChange(tab.id as 'dash' | 'contests' | 'channels')}
                                     className={cn(
                                         'flex-1 py-2.5 text-[10px] uppercase tracking-widest font-black rounded-lg transition-all',
                                         activeTab === tab.id ? 'bg-primary text-white shadow-lg' : 'text-white/40'
@@ -753,7 +816,7 @@ export const AdminPage: React.FC = () => {
                                                             <div className="p-1 space-y-1">
                                                                 <button
                                                                     className="w-full flex items-center space-x-2 px-3 py-2 text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-                                                                    onClick={() => handleUpdateChannel(ch.channel_id, ch.channel_username)}
+                                                                    onClick={() => handleUpdateChannel(ch.channel_id, ch.channel_username || '')}
                                                                 >
                                                                     <RefreshCw size={14} />
                                                                     <span>Обновить данные</span>
@@ -786,16 +849,49 @@ export const AdminPage: React.FC = () => {
                                                 </button>
                                             </div>
                                             {youtubeChannels?.map((ch, i) => (
-                                                <GlassCard key={i} className="p-4 flex items-center justify-between border-white/5 bg-red-500/5">
-                                                    <div className="flex items-center space-x-4">
+                                                <GlassCard 
+                                                    key={i} 
+                                                    className={cn(
+                                                        "relative p-4 flex items-center justify-between border-white/5 bg-red-500/5 group",
+                                                        activeChannelId === ch.channel_id ? "z-20" : "z-0"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center space-x-4 min-w-0 flex-1">
                                                         <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center text-red-500 font-black shrink-0">
                                                             <Youtube size={20} />
                                                         </div>
-                                                        <div className="overflow-hidden">
-                                                            <div className="text-sm font-bold truncate">{ch.title}</div>
-                                                            <div className="text-[10px] text-white/40">{ch.channel_id}</div>
+                                                        <div className="overflow-hidden min-w-0">
+                                                            <div className="text-sm font-bold truncate pr-2">{ch.title}</div>
+                                                            <div className="text-[10px] text-white/40 truncate">{ch.channel_id}</div>
                                                         </div>
                                                     </div>
+
+                                                    {/* Gear Icon */}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setActiveChannelId(activeChannelId === ch.channel_id ? null : ch.channel_id); }}
+                                                        className="p-2 text-white/20 hover:text-white/60 transition-colors rounded-lg hover:bg-white/5 shrink-0 ml-2"
+                                                    >
+                                                        <Settings size={16} />
+                                                    </button>
+
+                                                    {/* Settings Menu */}
+                                                    {activeChannelId === ch.channel_id && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, scale: 0.9 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            className="absolute right-2 top-12 z-10 w-48 bg-[#1c1c1e] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                                                        >
+                                                            <div className="p-1 space-y-1">
+                                                                <button
+                                                                    className="w-full flex items-center space-x-2 px-3 py-2 text-xs font-medium text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                                    onClick={() => handleDeleteYoutubeChannel(ch.channel_id)}
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                    <span>Удалить канал</span>
+                                                                </button>
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
                                                 </GlassCard>
                                             ))}
                                             {(!youtubeChannels || youtubeChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет YouTube каналов</p>}

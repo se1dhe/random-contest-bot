@@ -4,7 +4,7 @@ WebSocket роуты для реалтайм обновлений
 import asyncio
 import json
 import logging
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from shared.services.redis_service import get_redis
 

@@ -12,7 +12,7 @@ from shared.config import config
 router = Router()
 
 
-def format_contest_message(contest, bot_username: str) -> tuple[str, InlineKeyboardMarkup]:
+async def format_contest_message(contest, bot: Bot, bot_username: str) -> tuple[str, InlineKeyboardMarkup]:
     """
     Форматировать сообщение о конкурсе
     
@@ -38,7 +38,17 @@ def format_contest_message(contest, bot_username: str) -> tuple[str, InlineKeybo
     if contest.sponsors:
         text += "\n📢 <b>Спонсоры:</b>\n"
         for sponsor in contest.sponsors:
-            text += f"• {sponsor.channel_title}\n"
+            if sponsor.channel_username:
+                text += f"• <a href=\"https://t.me/{sponsor.channel_username}\">{sponsor.channel_title}</a>\n"
+            else:
+                try:
+                    invite = await bot.create_chat_invite_link(chat_id=sponsor.channel_id, name=f"{contest.title} sponsor", creates_join_request=False)
+                    if invite and getattr(invite, "invite_link", None):
+                        text += f"• <a href=\"{invite.invite_link}\">{sponsor.channel_title}</a>\n"
+                    else:
+                        text += f"• {sponsor.channel_title}\n"
+                except Exception:
+                    text += f"• {sponsor.channel_title}\n"
     
     # Информация о YouTube подписке
     if contest.youtube_channel_id:
@@ -174,7 +184,7 @@ async def publish_contest_to_channel(contest_id: int, bot: Bot, webapp_url: str)
         logger.info(f"Публикация конкурса {contest_id}: bot_username = {bot_username}")
         
         # Формируем сообщение с startapp ссылкой для открытия WebApp
-        text, keyboard = format_contest_message(contest, bot_username)
+        text, keyboard = await format_contest_message(contest, bot, bot_username)
         
         try:
             # Проверяем права бота в канале
@@ -231,6 +241,44 @@ async def publish_contest_to_channel(contest_id: int, bot: Bot, webapp_url: str)
                 )
             
             await service.publish_contest(contest_id, message.message_id)
+            
+            # Публикация в каналы спонсоров
+            if contest.post_to_sponsors and contest.sponsors:
+                logger.info(f"Публикация в каналы спонсоров ({len(contest.sponsors)})")
+                for sponsor in contest.sponsors:
+                    try:
+                        if contest.image_path:
+                            # Повторная проверка пути к файлу
+                            if contest.image_path.startswith('/'):
+                                sp_image_path = Path(contest.image_path)
+                            else:
+                                sp_image_path = Path('/app') / contest.image_path
+                            
+                            if sp_image_path.exists():
+                                await bot.send_photo(
+                                    chat_id=sponsor.channel_id,
+                                    photo=FSInputFile(str(sp_image_path)),
+                                    caption=text,
+                                    reply_markup=keyboard,
+                                    parse_mode="HTML"
+                                )
+                            else:
+                                await bot.send_message(
+                                    chat_id=sponsor.channel_id,
+                                    text=text,
+                                    reply_markup=keyboard,
+                                    parse_mode="HTML"
+                                )
+                        else:
+                            await bot.send_message(
+                                chat_id=sponsor.channel_id,
+                                text=text,
+                                reply_markup=keyboard,
+                                parse_mode="HTML"
+                            )
+                    except Exception as e:
+                        logger.error(f"Ошибка публикации в канал спонсора {sponsor.channel_title} ({sponsor.channel_id}): {e}")
+            
             return True
             
         except Exception as e:
@@ -317,4 +365,3 @@ async def notify_winners(contest, bot: Bot):
                     message,
                     parse_mode="HTML"
                 )
-

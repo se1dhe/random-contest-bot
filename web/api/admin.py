@@ -276,6 +276,27 @@ async def create_channel(
             "youtube_channel_id": existing.youtube_channel_id
         }
     
+    # Проверка прав бота в канале
+    from aiogram import Bot
+    from shared.services.telegram_service import TelegramService
+    bot = Bot(token=config.bot_token)
+    try:
+        bot_info = await bot.get_me()
+        target = data.channel_username if data.channel_username else data.channel_id
+        try:
+            member = await bot.get_chat_member(chat_id=target if isinstance(target, int) else f"@{str(target).lstrip('@')}", user_id=bot_info.id)
+        except Exception:
+            raise HTTPException(status_code=403, detail="Бот не добавлен в канал или нет доступа")
+        status_str = str(member.status)
+        allowed = status_str.lower() in ['chatmemberstatus.administrator', 'chatmemberstatus.creator', 'administrator', 'creator']
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Бот должен быть администратором канала")
+    finally:
+        try:
+            await bot.session.close()
+        except Exception:
+            pass
+
     channel = Channel(
         channel_id=data.channel_id,
         channel_username=data.channel_username,
@@ -447,6 +468,7 @@ async def create_contest(
     require_youtube_subscription: bool = Form(False),
     youtube_subscription_days_required: int = Form(0),
     youtube_channel_id: Optional[str] = Form(None),
+    post_to_sponsors: bool = Form(False),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin)
@@ -502,8 +524,8 @@ async def create_contest(
     
     # Обрабатываем дату: используем dateutil.parser для надежного парсинга
     try:
-        # dateutil.parser может обработать различные форматы даты
-        end_date = date_parser.parse(end_date)
+        original_end_date_str = end_date
+        end_date = date_parser.parse(original_end_date_str)
         
         # Если дата без таймзоны, считаем что это киевское время
         # Сохраняем в БД как есть (PostgreSQL настроен на киевское время)
@@ -519,7 +541,7 @@ async def create_contest(
     except (ValueError, TypeError, AttributeError) as e:
         # Если dateutil не справился, пробуем стандартный fromisoformat
         try:
-            end_date_str = data.end_date.strip()
+            end_date_str = original_end_date_str.strip()
             # Заменяем Z на +00:00 для fromisoformat
             if end_date_str.endswith('Z'):
                 end_date_str = end_date_str[:-1] + '+00:00'
@@ -576,7 +598,8 @@ async def create_contest(
         description=description,
         youtube_channel_id=final_youtube_channel_id,
         youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
-        image_path=image_path
+        image_path=image_path,
+        post_to_sponsors=post_to_sponsors
     )
     
     # Создаем призы
@@ -827,3 +850,25 @@ async def add_youtube_channel(
         "description": channel.description
     }
 
+
+@router.delete("/youtube-channels/{channel_id}")
+async def delete_youtube_channel(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Удалить YouTube канал
+    """
+    result = await db.execute(
+        select(YoutubeChannel).where(YoutubeChannel.channel_id == channel_id)
+    )
+    channel = result.scalar_one_or_none()
+    
+    if not channel:
+        raise HTTPException(status_code=404, detail="Канал не найден")
+    
+    await db.delete(channel)
+    await db.commit()
+    
+    return {"success": True}

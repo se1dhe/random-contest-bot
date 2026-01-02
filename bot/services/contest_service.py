@@ -31,7 +31,8 @@ class ContestService:
         description: Optional[str] = None,
         youtube_channel_id: Optional[str] = None,
         youtube_subscription_days_required: int = 0,
-        image_path: Optional[str] = None
+        image_path: Optional[str] = None,
+        post_to_sponsors: bool = False
     ) -> Contest:
         """
         Создать новый конкурс
@@ -57,7 +58,8 @@ class ContestService:
             youtube_channel_id=youtube_channel_id,
             youtube_subscription_days_required=youtube_subscription_days_required,
             image_path=image_path,
-            status=ContestStatus.DRAFT
+            status=ContestStatus.DRAFT,
+            post_to_sponsors=post_to_sponsors
         )
         self.db.add(contest)
         await self.db.commit()
