@@ -193,19 +193,24 @@ export const ResultsPage: React.FC = () => {
                                                 {winner.place === 1 ? <Crown size={24} /> : winner.place}
                                             </motion.div>
                                             {(() => {
-                                                const url = winner.username
+                                                const hasUsername = !!winner.username;
+                                                const url = hasUsername
                                                     ? `https://t.me/${winner.username}`
                                                     : `tg://user?id=${winner.user_id}`;
+                                                const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+                                                    e.preventDefault();
+                                                    if (hasUsername) {
+                                                        tg.openLink(url);
+                                                    } else {
+                                                        tg.openTelegramLink(url);
+                                                    }
+                                                };
                                                 return (
                                                     <a
                                                         href={url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
                                                         className="flex flex-col"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            tg.openLink(url);
-                                                        }}
+                                                        {...(hasUsername ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                                                        onClick={handleClick}
                                                     >
                                                         <motion.div
                                                             initial={{ x: -10, opacity: 0 }}
