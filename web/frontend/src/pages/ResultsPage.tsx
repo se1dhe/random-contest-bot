@@ -197,20 +197,13 @@ export const ResultsPage: React.FC = () => {
                                                 const url = hasUsername
                                                     ? `https://t.me/${winner.username}`
                                                     : `tg://user?id=${winner.user_id}`;
-                                                const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-                                                    e.preventDefault();
-                                                    if (hasUsername) {
-                                                        tg.openLink(url);
-                                                    } else {
-                                                        tg.openTelegramLink(url);
-                                                    }
-                                                };
                                                 return (
                                                     <a
                                                         href={url}
                                                         className="flex flex-col"
-                                                        {...(hasUsername ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                                                        onClick={handleClick}
+                                                        {...(hasUsername
+                                                            ? { target: "_blank", rel: "noopener noreferrer" }
+                                                            : { onClick: (e: React.MouseEvent<HTMLAnchorElement>) => { e.preventDefault(); tg.openTelegramLink(url); } })}
                                                     >
                                                         <motion.div
                                                             initial={{ x: -10, opacity: 0 }}
