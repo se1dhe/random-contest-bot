@@ -43,17 +43,33 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [prizeCount, setPrizeCount] = useState(1);
     const [drawMethod, setDrawMethod] = useState('random');
     const [prizes, setPrizes] = useState<Prize[]>([{ place: 1, title: '', description: '' }]);
-    const [sponsors] = useState<Sponsor[]>([]);
+    const [sponsors, setSponsors] = useState<Sponsor[]>([]); // Initialize properly
     const [requireYoutube, setRequireYoutube] = useState(false);
     const [youtubeDays, setYoutubeDays] = useState(0);
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+    // New Fields
+    const [youtubeChannelId, setYoutubeChannelId] = useState('');
+
 
     // Queries
     const { data: channels } = useQuery<any[]>({
         queryKey: ['admin_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/channels', {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!initData,
+    });
+
+    const { data: youtubeChannels } = useQuery<any[]>({
+        queryKey: ['admin_youtube_channels', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/youtube-channels', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -69,6 +85,14 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
             const reader = new FileReader();
             reader.onloadend = () => setImagePreview(reader.result as string);
             reader.readAsDataURL(file);
+        }
+    };
+
+    const toggleSponsor = (ch: any) => {
+        if (sponsors.find(s => s.channel_id === ch.channel_id)) {
+            setSponsors(sponsors.filter(s => s.channel_id !== ch.channel_id));
+        } else {
+            setSponsors([...sponsors, { channel_id: ch.channel_id, channel_title: ch.channel_title }]);
         }
     };
 
@@ -105,6 +129,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         formData.append('youtube_subscription_days_required', youtubeDays.toString());
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
+        if (requireYoutube) formData.append('youtube_channel_id', youtubeChannelId);
         if (image) formData.append('image', image);
 
         try {
@@ -317,6 +342,31 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                 </div>
                             </div>
 
+                            {/* Sponsors Selection */}
+                            <div className="space-y-3">
+                                <label className="form-label">Спонсоры (каналы для обязательной подписки)</label>
+                                <div className="space-y-2">
+                                    {channels?.filter(c => String(c.channel_id) !== channelId).map(ch => {
+                                        const isSelected = sponsors.some(s => s.channel_id === ch.channel_id);
+                                        return (
+                                            <GlassCard
+                                                key={ch.channel_id}
+                                                onClick={() => toggleSponsor(ch)}
+                                                className={`p-3 flex items-center space-x-3 cursor-pointer transition-all ${isSelected ? 'border-primary/50 bg-primary/10' : 'border-white/5 opacity-60 hover:opacity-100'}`}
+                                            >
+                                                <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-white/20'}`}>
+                                                    {isSelected && <Plus size={14} className="text-white" />}
+                                                </div>
+                                                <span className="text-sm font-medium">{ch.channel_title}</span>
+                                            </GlassCard>
+                                        );
+                                    })}
+                                    {channels?.filter(c => String(c.channel_id) !== channelId).length === 0 && (
+                                        <p className="text-[10px] text-white/20 italic">Нет доступных каналов для спонсорства</p>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* YouTube Condition */}
                             <div className="space-y-3">
                                 <label className="form-label">Условие YouTube</label>
@@ -343,14 +393,32 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                     </div>
 
                                     {requireYoutube && (
-                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5">
-                                            <label className="form-label text-[8px]">Минимум дней подписки</label>
-                                            <input
-                                                type="number"
-                                                className="form-input py-2 text-xs"
-                                                value={youtubeDays}
-                                                onChange={e => setYoutubeDays(parseInt(e.target.value) || 0)}
-                                            />
+                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
+                                            <div>
+                                                <label className="form-label text-[10px]">YouTube Канал</label>
+                                                <select
+                                                    className="form-select text-xs py-2 bg-red-500/5 border-red-500/20 focus:border-red-500/40"
+                                                    value={youtubeChannelId}
+                                                    onChange={e => setYoutubeChannelId(e.target.value)}
+                                                >
+                                                    <option value="">Выберите канал...</option>
+                                                    {youtubeChannels?.map(c => (
+                                                        <option key={c.channel_id} value={c.channel_id}>{c.title}</option>
+                                                    ))}
+                                                </select>
+                                                {!youtubeChannels?.length && (
+                                                    <div className="mt-1 text-[8px] text-red-400">Сначала добавьте каналы в настройках</div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="form-label text-[10px]">Минимум дней подписки (0 - для новых)</label>
+                                                <input
+                                                    type="number"
+                                                    className="form-input py-2 text-xs"
+                                                    value={youtubeDays}
+                                                    onChange={e => setYoutubeDays(parseInt(e.target.value) || 0)}
+                                                />
+                                            </div>
                                         </motion.div>
                                     )}
                                 </GlassCard>
@@ -364,6 +432,6 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 };
