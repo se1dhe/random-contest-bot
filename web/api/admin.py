@@ -256,7 +256,7 @@ async def create_channel(
         existing.is_active = True
         existing.channel_username = data.channel_username
         existing.channel_title = data.channel_title
-        existing.youtube_channel_id = data.youtube_channel_id
+        existing.youtube_channel_id = data.youtube_channel_id.strip() if data.youtube_channel_id else None
         await db.commit()
         await db.refresh(existing)
         return {
@@ -271,7 +271,7 @@ async def create_channel(
         channel_id=data.channel_id,
         channel_username=data.channel_username,
         channel_title=data.channel_title,
-        youtube_channel_id=data.youtube_channel_id
+        youtube_channel_id=data.youtube_channel_id.strip() if data.youtube_channel_id else None
     )
     db.add(channel)
     await db.commit()
@@ -312,7 +312,7 @@ async def update_channel(
     
     channel.channel_username = data.channel_username
     channel.channel_title = data.channel_title
-    channel.youtube_channel_id = data.youtube_channel_id
+    channel.youtube_channel_id = data.youtube_channel_id.strip() if data.youtube_channel_id else None
     await db.commit()
     await db.refresh(channel)
     

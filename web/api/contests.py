@@ -217,6 +217,96 @@ async def check_subscription(
     }
 
 
+@router.get("/{contest_id}/auto-check")
+async def auto_check(
+    contest_id: int,
+    user_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    telegram_service: TelegramService = Depends(get_telegram_service)
+):
+    """
+    Комплексная автоматическая проверка всех условий участия
+    
+    @param contest_id ID конкурса
+    @param user_id ID пользователя
+    @param db сессия БД
+    @param telegram_service сервис Telegram
+    @return статус всех условий и информация о регистрации
+    """
+    service = ContestService(db)
+    participant_service = ParticipantService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    
+    # 1. Проверяем регистрацию
+    participant = await participant_service.get_participant(contest_id, user_id)
+    if participant:
+        return {
+            "status": "already_registered",
+            "participant": {
+                "registration_number": participant.registration_number,
+                "registered_at": participant.registered_at.isoformat()
+            }
+        }
+    
+    # 2. Собираем список условий
+    conditions = []
+    
+    # Условие: Основной канал
+    main_chat = await telegram_service.get_chat_info(contest.channel_id)
+    conditions.append({
+        "type": "telegram",
+        "id": contest.channel_id,
+        "title": main_chat['title'] if main_chat else "Основной канал",
+        "username": main_chat['username'] if main_chat else None,
+        "met": await telegram_service.check_subscription(user_id, contest.channel_id)
+    })
+    
+    # Условие: Спонсоры
+    if contest.sponsors:
+        for sponsor in contest.sponsors:
+            conditions.append({
+                "type": "telegram",
+                "id": sponsor.channel_id,
+                "title": sponsor.channel_title or "Канал спонсора",
+                "username": sponsor.channel_username,
+                "met": await telegram_service.check_subscription(user_id, sponsor.channel_id)
+            })
+            
+    # Условие: YouTube
+    youtube_condition = None
+    if contest.youtube_channel_id:
+        from web.api.youtube_auth import check_youtube_subscription, get_user_credentials
+        credentials = await get_user_credentials(user_id, db)
+        
+        youtube_met = False
+        if credentials:
+            youtube_met = await check_youtube_subscription(
+                user_id=user_id,
+                target_channel_id=contest.youtube_channel_id,
+                db=db
+            )
+            
+        youtube_condition = {
+            "type": "youtube",
+            "id": contest.youtube_channel_id,
+            "title": "YouTube канал",
+            "met": youtube_met,
+            "connected": credentials is not None
+        }
+        conditions.append(youtube_condition)
+        
+    all_met = all(c['met'] for c in conditions)
+    
+    return {
+        "status": "active",
+        "all_met": all_met,
+        "conditions": conditions
+    }
+
+
 @router.post("/{contest_id}/register")
 async def register_participant(
     contest_id: int,
@@ -433,4 +523,54 @@ async def get_winners(
         }
         for prize in winners
     ]
+
+
+@router.get("/{contest_id}/results-info")
+async def get_results_info(
+    contest_id: int,
+    user_id: int = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Получить расширенную информацию для страницы результатов
+    
+    @param contest_id ID конкурса
+    @param user_id ID пользователя
+    @param db сессия БД
+    @return информация о результатах и статусе пользователя
+    """
+    service = ContestService(db)
+    participant_service = ParticipantService(db)
+    draw_service = DrawService(db)
+    
+    contest = await service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+        
+    participant = await participant_service.get_participant(contest_id, user_id)
+    winners = await draw_service.get_winners(contest_id)
+    
+    user_prize = None
+    if winners:
+        for prize in winners:
+            if prize.winner_user_id == user_id:
+                user_prize = {
+                    "place": prize.place,
+                    "title": prize.title
+                }
+    
+    return {
+        "status": contest.status.value,
+        "is_participant": participant is not None,
+        "user_prize": user_prize,
+        "winners": [
+            {
+                "place": p.place,
+                "title": p.title,
+                "winner_username": p.winner_username,
+                "winner_firstname": p.winner_firstname
+            }
+            for p in sorted(winners, key=lambda x: x.place)
+        ] if winners else []
+    }
 

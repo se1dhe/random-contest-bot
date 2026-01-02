@@ -40,10 +40,10 @@ class TelegramService:
         @param channel_ids список ID каналов
         @return словарь {channel_id: is_subscribed}
         """
-        results = {}
-        for channel_id in channel_ids:
-            results[channel_id] = await self.check_subscription(user_id, channel_id)
-        return results
+        import asyncio
+        tasks = [self.check_subscription(user_id, channel_id) for channel_id in channel_ids]
+        results_list = await asyncio.gather(*tasks)
+        return {channel_id: result for channel_id, result in zip(channel_ids, results_list)}
     
     async def get_chat_info(self, chat_id: int) -> Optional[dict]:
         """

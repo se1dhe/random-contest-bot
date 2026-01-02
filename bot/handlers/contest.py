@@ -44,14 +44,24 @@ def format_contest_message(contest, bot_username: str) -> tuple[str, InlineKeybo
     if contest.youtube_channel_id:
         youtube_url = None
         # Формируем URL в зависимости от формата ID
-        if contest.youtube_channel_id.startswith('@'):
-            youtube_url = f"https://youtube.com/{contest.youtube_channel_id}"
-        elif contest.youtube_channel_id.startswith('http'):
-            youtube_url = contest.youtube_channel_id
-        elif contest.youtube_channel_id.startswith('UC') or contest.youtube_channel_id.startswith('HC'):
-            youtube_url = f"https://youtube.com/channel/{contest.youtube_channel_id}"
+        yid = contest.youtube_channel_id.strip() if contest.youtube_channel_id else ""
+        if not yid:
+            youtube_url = None
+        elif yid.startswith('http'):
+            youtube_url = yid
+        elif 'youtube.com' in yid:
+            youtube_url = f"https://{yid}" if not yid.startswith('http') else yid
+            if yid.startswith('//'):
+                youtube_url = f"https:{yid}"
+        elif yid.startswith('@'):
+            youtube_url = f"https://youtube.com/{yid}"
+        elif yid.startswith('UC') or yid.startswith('HC'):
+            youtube_url = f"https://youtube.com/channel/{yid}"
+        elif len(yid) == 22 and all(c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in yid):
+            # Похоже на ID канала без префикса UC
+            youtube_url = f"https://youtube.com/channel/UC{yid}"
         else:
-            youtube_url = f"https://youtube.com/@{contest.youtube_channel_id}"
+            youtube_url = f"https://youtube.com/@{yid}"
         
         text += "\n📺 <b>Условие участия:</b>\n"
         text += f"Необходимо подписаться на YouTube канал:\n"

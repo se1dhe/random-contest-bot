@@ -215,15 +215,24 @@ async def render_contest_page(request: Request, contest_id: int, user_id: int, u
                 # Получаем название требуемого YouTube канала
                 try:
                     # Формируем URL канала
-                    channel_id = contest.youtube_channel_id
-                    if channel_id.startswith('@'):
-                        required_youtube_channel_url = f"https://youtube.com/{channel_id}"
-                    elif channel_id.startswith('http'):
-                        required_youtube_channel_url = channel_id
-                    elif channel_id.startswith('UC') or channel_id.startswith('HC'):
-                        required_youtube_channel_url = f"https://youtube.com/channel/{channel_id}"
+                    yid = contest.youtube_channel_id.strip() if contest.youtube_channel_id else ""
+                    if not yid:
+                        required_youtube_channel_url = None
+                    elif yid.startswith('http'):
+                        required_youtube_channel_url = yid
+                    elif 'youtube.com' in yid:
+                        required_youtube_channel_url = f"https://{yid}" if not yid.startswith('http') else yid
+                        if yid.startswith('//'):
+                            required_youtube_channel_url = f"https:{yid}"
+                    elif yid.startswith('@'):
+                        required_youtube_channel_url = f"https://youtube.com/{yid}"
+                    elif yid.startswith('UC') or yid.startswith('HC'):
+                        required_youtube_channel_url = f"https://youtube.com/channel/{yid}"
+                    elif len(yid) == 22 and all(c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in yid):
+                        # Похоже на ID канала без префикса UC
+                        required_youtube_channel_url = f"https://youtube.com/channel/UC{yid}"
                     else:
-                        required_youtube_channel_url = f"https://youtube.com/@{channel_id}"
+                        required_youtube_channel_url = f"https://youtube.com/@{yid}"
                     
                     # Пытаемся получить название канала через API
                     if hasattr(config, 'youtube_api_key') and config.youtube_api_key:
