@@ -195,8 +195,8 @@ export const ResultsPage: React.FC = () => {
                                             <div className="flex flex-col cursor-pointer" onClick={() => {
                                                 const url = winner.username
                                                     ? `https://t.me/${winner.username}`
-                                                    : `https://t.me/user?id=${winner.user_id}`;
-                                                tg.openLink(url);
+                                                    : `tg://user?id=${winner.user_id}`;
+                                                tg.openTelegramLink(url);
                                             }}>
                                                 <motion.div
                                                     initial={{ x: -10, opacity: 0 }}
