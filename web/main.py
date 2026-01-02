@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from shared.config import config
-from web.api import contests, admin, publish, youtube_auth
+from web.api import contests, admin, publish, youtube_auth, ws, analytics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +33,8 @@ app.include_router(contests.router)
 app.include_router(admin.router)
 app.include_router(publish.router)
 app.include_router(youtube_auth.router)
+app.include_router(ws.router)
+app.include_router(analytics.router)
 
 @app.get("/", response_class=FileResponse)
 async def root():

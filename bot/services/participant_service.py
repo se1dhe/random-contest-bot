@@ -23,7 +23,9 @@ class ParticipantService:
         self,
         contest_id: int,
         user_id: int,
-        username: Optional[str] = None
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None
     ) -> Optional[Participant]:
         """
         Зарегистрировать участника в конкурсе
@@ -45,6 +47,8 @@ class ParticipantService:
             contest_id=contest_id,
             user_id=user_id,
             username=username,
+            first_name=first_name,
+            last_name=last_name,
             registration_number=registration_number,
             registered_at=datetime.utcnow()
         )

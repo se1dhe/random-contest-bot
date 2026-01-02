@@ -22,6 +22,49 @@ class YouTubeService:
         self.api_key = config.youtube_api_key if hasattr(config, 'youtube_api_key') else None
         self.base_url = "https://www.googleapis.com/youtube/v3"
     
+    async def get_channel_info(self, channel_id: str) -> Optional[Dict[str, any]]:
+        """
+        Получить информацию о YouTube канале
+        
+        @param channel_id ID YouTube канала
+        @return словарь с информацией о канале (title, description, customUrl, thumbnail)
+        """
+        if not self.api_key:
+            logger.error("YouTube API ключ не настроен")
+            return None
+            
+        try:
+            url = f"{self.base_url}/channels"
+            params = {
+                'part': 'snippet',
+                'id': channel_id,
+                'key': self.api_key
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status != 200:
+                        logger.error(f"Ошибка YouTube API: {response.status}")
+                        return None
+                        
+                    data = await response.json()
+                    
+                    if 'items' in data and len(data['items']) > 0:
+                        snippet = data['items'][0]['snippet']
+                        return {
+                            'title': snippet.get('title'),
+                            'description': snippet.get('description'),
+                            'customUrl': snippet.get('customUrl'),
+                            'thumbnail': snippet.get('thumbnails', {}).get('default', {}).get('url')
+                        }
+                    else:
+                        logger.warning(f"Канал {channel_id} не найден")
+                        return None
+                        
+        except Exception as e:
+            logger.error(f"Ошибка при получении информации о канале {channel_id}: {e}")
+            return None
+
     async def check_subscription(
         self, 
         user_youtube_channel_id: str, 

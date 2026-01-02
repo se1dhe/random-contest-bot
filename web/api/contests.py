@@ -1,7 +1,7 @@
 """
 API роуты для конкурсов
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime
@@ -86,6 +86,9 @@ async def get_contest(
                 detail="Конкурс уже завершен"
             )
     
+    # Get participant count
+    participants_count = await service.get_participants_count(contest_id)
+    
     # Преобразуем в словарь
     return {
         "id": contest.id,
@@ -96,6 +99,8 @@ async def get_contest(
         "end_date": contest.end_date.isoformat(),
         "status": contest.status.value,
         "prize_count": contest.prize_count,
+        "participants_count": participants_count,
+        "image_url": f"/{contest.image_path}" if contest.image_path else None,
         "prizes": [
             {
                 "id": prize.id,
@@ -115,9 +120,9 @@ async def get_contest(
             for sponsor in contest.sponsors
         ],
         "youtube_channel_id": contest.youtube_channel_id,
-        "youtube_subscription_days_required": contest.youtube_subscription_days_required,
-        "image_path": contest.image_path
+        "youtube_subscription_days_required": contest.youtube_subscription_days_required
     }
+
 
 
 @router.get("/{contest_id}/info")
@@ -257,7 +262,8 @@ async def auto_check(
                 "registration_number": participant.registration_number,
                 "registered_at": participant.registered_at.isoformat()
             },
-            "conditions": []
+            "conditions": [],
+            "participants_count": await service.get_participants_count(contest_id)
         }
     
     # 2. Собираем список условий
@@ -313,13 +319,15 @@ async def auto_check(
         "status": "active",
         "is_registered": False,
         "can_register": all_met,
-        "conditions": conditions
+        "conditions": conditions,
+        "participants_count": await service.get_participants_count(contest_id)
     }
 
 
 @router.post("/{contest_id}/register")
 async def register_participant(
     contest_id: int,
+    request: Request,
     data: Optional[dict] = None,
     user_id: Optional[int] = Query(None),
     username: Optional[str] = Query(None),
@@ -442,16 +450,53 @@ async def register_participant(
                     detail="Необходимо быть подписанным на указанный YouTube канал"
                 )
     
+    # Извлекаем данные из initData если есть
+    first_name = None
+    last_name = None
+    
+    auth_data = request.query_params.get("_auth")
+    if auth_data:
+        try:
+            from urllib.parse import parse_qs, unquote
+            parsed_auth = parse_qs(auth_data)
+            if 'user' in parsed_auth:
+                import json
+                user_data = json.loads(unquote(parsed_auth['user'][0]))
+                first_name = user_data.get('first_name')
+                last_name = user_data.get('last_name')
+                # Если username не передан явно, берем из initData
+                if not username:
+                    username = user_data.get('username')
+        except Exception as e:
+            logger.warning(f"Ошибка парсинга initData: {e}")
+
     # Регистрируем участника
     participant_service = ParticipantService(db)
     participant = await participant_service.register_participant(
         contest_id=contest_id,
         user_id=user_id,
-        username=username
+        username=username,
+        first_name=first_name,
+        last_name=last_name
     )
     
     if not participant:
         raise HTTPException(status_code=400, detail="Вы уже зарегистрированы в этом конкурсе")
+    
+    # Публикуем обновление в Redis для WebSocket
+    try:
+        from shared.services.redis_service import get_redis
+        import json
+        redis = await get_redis()
+        participants_count = await contest_service.get_participants_count(contest_id)
+        logger.info(f"Publishing update for contest {contest_id}: count={participants_count}")
+        await redis.publish("contest_updates", json.dumps({
+            "type": "new_registration",
+            "contest_id": contest_id,
+            "participants_count": participants_count
+        }))
+    except Exception as e:
+        logger.warning(f"Ошибка при публикации обновления конкурса в Redis: {e}")
     
     return {
         "registration_number": participant.registration_number,
@@ -564,6 +609,9 @@ async def get_results_info(
     contest = await service.get_contest_by_id(contest_id)
     if not contest:
         raise HTTPException(status_code=404, detail="Конкурс не найден")
+    
+    # Get participant count
+    participants_count = await service.get_participants_count(contest_id)
         
     participant = await participant_service.get_participant(contest_id, user_id)
     winners = await draw_service.get_winners(contest_id)
@@ -578,6 +626,11 @@ async def get_results_info(
                 }
     
     return {
+        "contest_title": contest.title,
+        "contest_description": contest.description,
+        "image_url": f"/{contest.image_path}" if contest.image_path else None,
+        "end_date": contest.end_date.isoformat(),
+        "participants_count": participants_count,
         "status": contest.status.value,
         "is_participant": participant is not None,
         "user_prize": user_prize,
@@ -585,10 +638,12 @@ async def get_results_info(
             {
                 "place": p.place,
                 "title": p.title,
-                "winner_username": p.winner_username,
-                "winner_firstname": p.winner_firstname
+                "user_id": p.winner_user_id,
+                "username": p.winner_username,
+                "firstname": p.winner_firstname
             }
             for p in sorted(winners, key=lambda x: x.place)
         ] if winners else []
     }
+
 

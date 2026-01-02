@@ -176,3 +176,18 @@ class ContestService:
         )
         return result.scalar_one_or_none()
 
+    async def delete_contest(self, contest_id: int) -> bool:
+        """
+        Удалить конкурс
+        
+        @param contest_id ID конкурса
+        @return True если успешно
+        """
+        contest = await self.get_contest_by_id(contest_id)
+        if not contest:
+            return False
+            
+        await self.db.delete(contest)
+        await self.db.commit()
+        return True
+

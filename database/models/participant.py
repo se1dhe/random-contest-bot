@@ -14,6 +14,8 @@ class Participant(BaseModel):
     contest_id = Column(Integer, ForeignKey('contests.id'), nullable=False, index=True)
     user_id = Column(BigInteger, nullable=False, index=True)
     username = Column(String(255), nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
     registration_number = Column(Integer, nullable=False)  # Уникальный номер регистрации
     registered_at = Column(DateTime, nullable=False)
     activity_score = Column(Integer, default=0, nullable=False)  # Очки активности (для метода по активности)

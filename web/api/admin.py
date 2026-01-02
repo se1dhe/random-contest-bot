@@ -11,7 +11,8 @@ from database.db import get_db
 from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
-from database.models import Channel, Contest, Prize, Sponsor
+from shared.services.youtube_service import YouTubeService
+from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel
 from database.models.contest import ContestStatus, ContestDrawMethod
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -41,6 +42,14 @@ class ContestCreate(BaseModel):
     sponsors: Optional[List[dict]] = None  # [{"channel_id": ..., "channel_title": ...}]
     require_youtube_subscription: bool = False  # Требовать подписку на YouTube канал
     youtube_subscription_days_required: int = 0  # Минимальное количество дней подписки
+    youtube_channel_id: Optional[str] = None  # ID YouTube канала (UC...)
+
+
+class YoutubeChannelCreate(BaseModel):
+    """Модель создания YouTube канала"""
+    channel_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
 
 
 class ChannelCreate(BaseModel):
@@ -385,12 +394,12 @@ async def get_contests(
             selectinload(Contest.channel)
         ).where(Contest.status == ContestStatus(status))
     else:
-        # По умолчанию не показываем завершенные и опубликованные конкурсы
         query = select(
             Contest,
             participants_count_subquery.label('participants_count')
         ).options(
-            selectinload(Contest.channel)
+            selectinload(Contest.channel),
+            selectinload(Contest.prizes)
         ).where(
             Contest.status != ContestStatus.FINISHED,
             Contest.status != ContestStatus.RESULTS_PUBLISHED
@@ -411,7 +420,15 @@ async def get_contests(
             } if contest.channel else None,
             "end_date": contest.end_date.isoformat(),
             "status": contest.status.value,
-            "participants_count": participants_count or 0
+            "participants_count": participants_count or 0,
+            "prize_count": contest.prize_count,
+            "prizes": [
+                {
+                    "id": p.id,
+                    "place": p.place,
+                    "title": p.title
+                } for p in contest.prizes
+            ] if contest.prizes else []
         }
         for contest, participants_count in rows
     ]
@@ -429,6 +446,7 @@ async def create_contest(
     sponsors: Optional[str] = Form(None),  # JSON строка
     require_youtube_subscription: bool = Form(False),
     youtube_subscription_days_required: int = Form(0),
+    youtube_channel_id: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin)
@@ -535,15 +553,18 @@ async def create_contest(
     if not channel:
         raise HTTPException(status_code=404, detail="Канал не найден")
     
-    # Если требуется подписка на YouTube, берем YouTube канал из канала
-    youtube_channel_id = None
+    # Если требуется подписка на YouTube, берем YouTube канал
+    final_youtube_channel_id = None
     if require_youtube_subscription:
-        if not channel.youtube_channel_id:
+        if youtube_channel_id:
+            final_youtube_channel_id = youtube_channel_id
+        elif channel.youtube_channel_id:
+            final_youtube_channel_id = channel.youtube_channel_id
+        else:
             raise HTTPException(
                 status_code=400,
-                detail="Для этого конкурса требуется подписка на YouTube канал, но YouTube канал не настроен для выбранного Telegram канала. Пожалуйста, добавьте YouTube канал в настройках канала."
+                detail="Для этого конкурса требуется подписка на YouTube канал, но YouTube канал не выбран."
             )
-        youtube_channel_id = channel.youtube_channel_id
     
     # Создаем конкурс
     contest = await service.create_contest(
@@ -553,7 +574,7 @@ async def create_contest(
         prize_count=prize_count,
         draw_method=draw_method,
         description=description,
-        youtube_channel_id=youtube_channel_id,
+        youtube_channel_id=final_youtube_channel_id,
         youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
         image_path=image_path
     )
@@ -685,6 +706,24 @@ async def draw_winners(
     }
 
 
+@router.delete("/contests/{contest_id}")
+async def delete_contest(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Удалить конкурс
+    """
+    contest_service = ContestService(db)
+    success = await contest_service.delete_contest(contest_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+        
+    return {"success": True}
+
+
 @router.get("/contests/{contest_id}/stats")
 async def get_contest_stats(
     contest_id: int,
@@ -714,5 +753,77 @@ async def get_contest_stats(
         "participants_count": participants_count,
         "prize_count": contest.prize_count,
         "end_date": contest.end_date.isoformat()
+    }
+
+
+@router.get("/youtube-channels")
+async def get_youtube_channels(
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить список YouTube каналов
+    """
+    result = await db.execute(select(YoutubeChannel))
+    channels = result.scalars().all()
+    
+    return [
+        {
+            "channel_id": c.channel_id,
+            "title": c.title,
+            "description": c.description
+        }
+        for c in channels
+    ]
+
+
+@router.post("/youtube-channels")
+async def add_youtube_channel(
+    data: YoutubeChannelCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Добавить YouTube канал
+    """
+    # Проверяем на существование
+    result = await db.execute(
+        select(YoutubeChannel).where(YoutubeChannel.channel_id == data.channel_id)
+    )
+    existing = result.scalar_one_or_none()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Такой канал уже добавлен")
+    
+    # Получаем информацию о канале через API
+    youtube_service = YouTubeService()
+    channel_info = await youtube_service.get_channel_info(data.channel_id)
+    
+    if channel_info:
+        title = channel_info.get('title')
+        description = channel_info.get('description')
+    else:
+        # Если не удалось получить через API, используем переданные данные
+        if not data.title:
+            raise HTTPException(
+                status_code=400, 
+                detail="Не удалось получить информацию о канале через API, и название не указано вручную"
+            )
+        title = data.title
+        description = data.description
+
+    channel = YoutubeChannel(
+        channel_id=data.channel_id,
+        title=title,
+        description=description
+    )
+    db.add(channel)
+    await db.commit()
+    await db.refresh(channel)
+    
+    return {
+        "channel_id": channel.channel_id,
+        "title": channel.title,
+        "description": channel.description
     }
 

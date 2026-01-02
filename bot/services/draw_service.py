@@ -60,6 +60,7 @@ class DrawService:
                 winner = winners[i]
                 prize.winner_user_id = winner.user_id
                 prize.winner_username = winner.username
+                prize.winner_firstname = winner.first_name
         
         await self.db.commit()
         return True
