@@ -192,29 +192,38 @@ export const ResultsPage: React.FC = () => {
                                             >
                                                 {winner.place === 1 ? <Crown size={24} /> : winner.place}
                                             </motion.div>
-                                            <div className="flex flex-col cursor-pointer" onClick={() => {
+                                            {(() => {
                                                 const url = winner.username
                                                     ? `https://t.me/${winner.username}`
                                                     : `tg://user?id=${winner.user_id}`;
-                                                tg.openTelegramLink(url);
-                                            }}>
-                                                <motion.div
-                                                    initial={{ x: -10, opacity: 0 }}
-                                                    animate={{ x: 0, opacity: 1 }}
-                                                    transition={{ delay: 0.3 }}
-                                                    className="font-bold text-white leading-tight hover:text-primary transition-colors"
-                                                >
-                                                    {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
-                                                </motion.div>
-                                                <motion.span
-                                                    initial={{ x: -10, opacity: 0 }}
-                                                    animate={{ x: 0, opacity: 1 }}
-                                                    transition={{ delay: 0.4 }}
-                                                    className="text-xs text-white/50 truncate max-w-[180px]"
-                                                >
-                                                    {winner.title}
-                                                </motion.span>
-                                            </div>
+                                                return (
+                                                    <a
+                                                        href={url}
+                                                        className="flex flex-col"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            tg.openTelegramLink(url);
+                                                        }}
+                                                    >
+                                                        <motion.div
+                                                            initial={{ x: -10, opacity: 0 }}
+                                                            animate={{ x: 0, opacity: 1 }}
+                                                            transition={{ delay: 0.3 }}
+                                                            className="font-bold text-white leading-tight hover:text-primary transition-colors"
+                                                        >
+                                                            {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
+                                                        </motion.div>
+                                                        <motion.span
+                                                            initial={{ x: -10, opacity: 0 }}
+                                                            animate={{ x: 0, opacity: 1 }}
+                                                            transition={{ delay: 0.4 }}
+                                                            className="text-xs text-white/50 truncate max-w-[180px]"
+                                                        >
+                                                            {winner.title}
+                                                        </motion.span>
+                                                    </a>
+                                                );
+                                            })()}
                                         </div>
                                         <motion.div
                                             initial={{ scale: 0 }}
