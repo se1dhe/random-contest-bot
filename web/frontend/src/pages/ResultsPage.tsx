@@ -199,10 +199,12 @@ export const ResultsPage: React.FC = () => {
                                                 return (
                                                     <a
                                                         href={url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
                                                         className="flex flex-col"
                                                         onClick={(e) => {
                                                             e.preventDefault();
-                                                            tg.openTelegramLink(url);
+                                                            tg.openLink(url);
                                                         }}
                                                     >
                                                         <motion.div
