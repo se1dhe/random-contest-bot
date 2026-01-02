@@ -31,7 +31,7 @@ interface ResultInfo {
 
 export const ResultsPage: React.FC = () => {
     const { contestId } = useParams();
-    const { initData, userId, tg } = useTelegram();
+    const { initData, userId } = useTelegram();
     const [revealedWinners, setRevealedWinners] = useState<number>(0);
     const [animationComplete, setAnimationComplete] = useState(false);
 
@@ -192,38 +192,24 @@ export const ResultsPage: React.FC = () => {
                                             >
                                                 {winner.place === 1 ? <Crown size={24} /> : winner.place}
                                             </motion.div>
-                                            {(() => {
-                                                const hasUsername = !!winner.username;
-                                                const url = hasUsername
-                                                    ? `https://t.me/${winner.username}`
-                                                    : `tg://user?id=${winner.user_id}`;
-                                                return (
-                                                    <a
-                                                        href={url}
-                                                        className="flex flex-col"
-                                                        {...(hasUsername
-                                                            ? { target: "_blank", rel: "noopener noreferrer" }
-                                                            : { onClick: (e: React.MouseEvent<HTMLAnchorElement>) => { e.preventDefault(); tg.openTelegramLink(url); } })}
-                                                    >
-                                                        <motion.div
-                                                            initial={{ x: -10, opacity: 0 }}
-                                                            animate={{ x: 0, opacity: 1 }}
-                                                            transition={{ delay: 0.3 }}
-                                                            className="font-bold text-white leading-tight hover:text-primary transition-colors"
-                                                        >
-                                                            {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
-                                                        </motion.div>
-                                                        <motion.span
-                                                            initial={{ x: -10, opacity: 0 }}
-                                                            animate={{ x: 0, opacity: 1 }}
-                                                            transition={{ delay: 0.4 }}
-                                                            className="text-xs text-white/50 truncate max-w-[180px]"
-                                                        >
-                                                            {winner.title}
-                                                        </motion.span>
-                                                    </a>
-                                                );
-                                            })()}
+                                            <div className="flex flex-col">
+                                                <motion.div
+                                                    initial={{ x: -10, opacity: 0 }}
+                                                    animate={{ x: 0, opacity: 1 }}
+                                                    transition={{ delay: 0.3 }}
+                                                    className="font-bold text-white leading-tight"
+                                                >
+                                                    {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
+                                                </motion.div>
+                                                <motion.span
+                                                    initial={{ x: -10, opacity: 0 }}
+                                                    animate={{ x: 0, opacity: 1 }}
+                                                    transition={{ delay: 0.4 }}
+                                                    className="text-xs text-white/50 truncate max-w-[180px]"
+                                                >
+                                                    {winner.title}
+                                                </motion.span>
+                                            </div>
                                         </div>
                                         <motion.div
                                             initial={{ scale: 0 }}
