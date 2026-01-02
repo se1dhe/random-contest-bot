@@ -75,6 +75,7 @@ export const RegistrationPage: React.FC = () => {
         },
         enabled: !!contestId,
     });
+    const contestIsEnded = !!contest?.end_date && new Date(contest.end_date) <= new Date();
 
     // Synchronize live count with initial data
     useEffect(() => {
@@ -519,6 +520,25 @@ export const RegistrationPage: React.FC = () => {
                                     <p className="p-4 text-center text-white/40 text-sm">Условий пока нет</p>
                                 )}
                             </GlassCard>
+                            <div className="px-1">
+                                {contestIsEnded ? (
+                                    <Button
+                                        variant="secondary"
+                                        className="w-full"
+                                        onClick={handleCountdownEnd}
+                                    >
+                                        Посмотреть результаты
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        className="w-full"
+                                        disabled={isRegistering || !status?.can_register || isSuccess}
+                                        onClick={handleRegister}
+                                    >
+                                        Зарегистрироваться
+                                    </Button>
+                                )}
+                            </div>
                         </section>
 
                         <footer className="pt-2">
