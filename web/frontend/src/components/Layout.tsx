@@ -23,6 +23,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     {children}
                 </motion.main>
             </AnimatePresence>
+
+            <footer className="py-4 text-center text-sm text-gray-500">
+                developed by{' '}
+                <a
+                    href="https://t.me/se1dhe"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:text-primary/80 transition-colors bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 font-medium"
+                >
+                    se1dhe
+                </a>{' '}
+                with <span className="text-red-500 animate-pulse">❤️</span>
+            </footer>
         </div>
     );
 };

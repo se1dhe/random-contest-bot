@@ -29,7 +29,8 @@ export const useTelegram = () => {
         WebApp.HapticFeedback.impactOccurred(type);
     };
 
-    const openLink = (url: string) => WebApp.openLink(url);
+    const openLink = (url: string, options?: { try_instant_view?: boolean; try_browser?: string }) =>
+        (WebApp.openLink as unknown as (target: string, opts?: { try_instant_view?: boolean; try_browser?: string }) => void)(url, options);
     const openTelegramLink = (url: string) => WebApp.openTelegramLink(url);
 
     return {

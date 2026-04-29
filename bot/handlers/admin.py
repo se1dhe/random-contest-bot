@@ -7,6 +7,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, CommandStart
 from aiogram.filters.command import CommandObject
 from shared.config import config
+from shared.i18n import normalize_language, translate
 import os
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,21 @@ def get_admin_webapp_url() -> str:
     return os.getenv("WEBAPP_URL", "http://localhost:8000") + "/admin"
 
 
+def get_webapp_url(path: str) -> str:
+    """Build an absolute WebApp URL."""
+    base_url = os.getenv("WEBAPP_URL") or config.webapp_url
+    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
+async def get_contest_language(contest_id: int) -> str:
+    from bot.services.contest_service import ContestService
+    from database.db import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        contest = await ContestService(db).get_contest_by_id(contest_id)
+        return normalize_language(contest.language if contest else None)
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
     """
@@ -41,23 +57,20 @@ async def cmd_start(message: Message, command: CommandObject):
     if args and args.startswith("contest_"):
         try:
             contest_id = int(args.split("_")[1])
-            bot_info = await message.bot.get_me()
-            bot_username = bot_info.username
-            
-            # Используем startapp для открытия WebApp напрямую
-            register_url = f"https://t.me/{bot_username}?startapp=contest_{contest_id}"
+            language = await get_contest_language(contest_id)
+            register_url = get_webapp_url(f"register?contest_id={contest_id}")
             
             # Отправляем URL кнопку в личный чат
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
-                    text="🎯 Зарегистрироваться в конкурсе",
-                    url=register_url
+                    text=f"🎯 {translate(language, 'register_in_contest')}",
+                    web_app={"url": register_url}
                 )]
             ])
             
             await message.answer(
-                "🎉 <b>Регистрация в конкурсе</b>\n\n"
-                "Нажмите кнопку ниже, чтобы открыть форму регистрации:",
+                f"🎉 <b>{translate(language, 'registration_title')}</b>\n\n"
+                f"{translate(language, 'registration_hint')}",
                 reply_markup=keyboard
             )
             return
@@ -70,23 +83,20 @@ async def cmd_start(message: Message, command: CommandObject):
     if args and args.startswith("results_"):
         try:
             contest_id = int(args.split("_")[1])
-            bot_info = await message.bot.get_me()
-            bot_username = bot_info.username
-            
-            # Используем startapp для открытия WebApp напрямую
-            results_url = f"https://t.me/{bot_username}?startapp=results_{contest_id}"
+            language = await get_contest_language(contest_id)
+            results_url = get_webapp_url(f"results/{contest_id}")
             
             # Отправляем URL кнопку в личный чат
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
-                    text="📊 Посмотреть результаты",
-                    url=results_url
+                    text=f"📊 {translate(language, 'view_results')}",
+                    web_app={"url": results_url}
                 )]
             ])
             
             await message.answer(
-                "🏆 <b>Результаты конкурса</b>\n\n"
-                "Нажмите кнопку ниже, чтобы посмотреть результаты:",
+                f"🏆 <b>{translate(language, 'results_generic')}</b>\n\n"
+                f"{translate(language, 'results_hint')}",
                 reply_markup=keyboard
             )
             return
@@ -97,7 +107,7 @@ async def cmd_start(message: Message, command: CommandObject):
     
     # Обычный /start без аргументов
     try:
-        if message.from_user.id == config.admin_id:
+        if config.is_admin(message.from_user.id):
             logger.info(f"Обработка /start для администратора {message.from_user.id}")
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
@@ -133,7 +143,7 @@ async def cmd_admin(message: Message):
     
     @param message сообщение от пользователя
     """
-    if message.from_user.id != config.admin_id:
+    if not config.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет доступа к админ-панели.")
         return
     
@@ -158,7 +168,7 @@ async def cmd_help(message: Message):
     
     @param message сообщение от пользователя
     """
-    if message.from_user.id == config.admin_id:
+    if config.is_admin(message.from_user.id):
         help_text = (
             "📋 <b>Команды администратора:</b>\n\n"
             "/start - Начать работу с ботом\n"
@@ -174,4 +184,3 @@ async def cmd_help(message: Message):
         )
     
     await message.answer(help_text)
-

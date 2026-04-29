@@ -6,7 +6,7 @@ from sqlalchemy.orm import declarative_base
 from shared.config import config
 
 # Создаем движок БД
-DATABASE_URL = f"postgresql+asyncpg://{config.db_user}:{config.db_password}@{config.db_host}:{config.db_port}/{config.db_name}"
+DATABASE_URL = config.database_url
 
 engine = create_async_engine(
     DATABASE_URL,
@@ -38,4 +38,3 @@ async def get_db() -> AsyncSession:
             yield session
         finally:
             await session.close()
-

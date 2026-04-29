@@ -41,6 +41,10 @@ class DrawService:
         
         if not contest:
             return False
+
+        # Повторный вызов розыгрыша не должен перезаписывать уже назначенных победителей.
+        if any(prize.winner_user_id for prize in contest.prizes):
+            return True
         
         # Получаем всех участников
         participants = contest.participants
@@ -105,4 +109,3 @@ class DrawService:
             .order_by(Prize.place)
         )
         return list(result.scalars().all())
-

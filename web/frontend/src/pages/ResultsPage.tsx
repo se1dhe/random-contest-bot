@@ -9,6 +9,7 @@ import { Trophy, Gift, Crown, Calendar, Users } from 'lucide-react';
 import { useTelegram } from '../hooks/useTelegram';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { normalizeLanguage, t, type ContestLanguage } from '../i18n';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -17,6 +18,7 @@ function cn(...inputs: ClassValue[]) {
 interface ResultInfo {
     contest_title: string;
     contest_description?: string;
+    language?: ContestLanguage;
     image_url?: string | null;
     end_date: string;
     participants_count: number;
@@ -85,15 +87,17 @@ export const ResultsPage: React.FC = () => {
     }, [results, animationComplete]);
 
     if (isLoading) {
+        const language = 'ru';
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
                 <div className="spinner" />
-                <p className="text-white/40 text-sm animate-pulse">Загружаем результаты...</p>
+                <p className="text-white/40 text-sm animate-pulse">{t(language, 'loadingResults')}</p>
             </div>
         );
     }
 
     if (!results) return null;
+    const language = normalizeLanguage(results.language);
 
     return (
         <div className="space-y-6 pb-10">
@@ -136,7 +140,7 @@ export const ResultsPage: React.FC = () => {
                         <div className="w-1 h-1 rounded-full bg-white/20" />
                         <div className="flex items-center gap-1.5">
                             <Users size={14} />
-                            <span>{results.participants_count} участников</span>
+                            <span>{results.participants_count} {t(language, 'participants')}</span>
                         </div>
                     </div>
                 </div>
@@ -146,7 +150,7 @@ export const ResultsPage: React.FC = () => {
             <section className="space-y-4">
                 <div className="flex items-center justify-between px-1">
                     <h2 className="text-sm font-bold uppercase tracking-wider text-white/40">
-                        Победители
+                        {t(language, 'winners')}
                     </h2>
                     {!animationComplete && (
                         <motion.div
@@ -154,7 +158,7 @@ export const ResultsPage: React.FC = () => {
                             transition={{ duration: 1.5, repeat: Infinity }}
                             className="text-xs text-primary font-medium"
                         >
-                            Объявление результатов...
+                            {t(language, 'announcingResults')}
                         </motion.div>
                     )}
                 </div>
@@ -199,7 +203,7 @@ export const ResultsPage: React.FC = () => {
                                                     transition={{ delay: 0.3 }}
                                                     className="font-bold text-white leading-tight"
                                                 >
-                                                    {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
+                                                    {winner.username ? `@${winner.username}` : (winner.firstname || t(language, 'winnerFallback'))}
                                                 </motion.div>
                                                 <motion.span
                                                     initial={{ x: -10, opacity: 0 }}
@@ -225,7 +229,7 @@ export const ResultsPage: React.FC = () => {
                         </AnimatePresence>
                     ) : (
                         <div className="text-center py-10 text-white/40 italic">
-                            Победители пока не определены
+                            {t(language, 'winnersPending')}
                         </div>
                     )}
                 </div>
@@ -237,7 +241,7 @@ export const ResultsPage: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     className="text-center text-xs text-white/30 pt-4"
                 >
-                    🎉 Поздравляем всех победителей!
+                    {t(language, 'congratsWinners')}
                 </motion.footer>
             )}
         </div>

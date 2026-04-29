@@ -1,20 +1,20 @@
 """
 API роуты для админки
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Body
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 from database.db import get_db
 from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
 from shared.services.youtube_service import YouTubeService
-from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel
+from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, KickChannel, Participant, AdminAction, ForumTopic
 from database.models.contest import ContestStatus, ContestDrawMethod
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from shared.config import config
 from pydantic import BaseModel
@@ -22,8 +22,31 @@ import os
 import shutil
 import uuid
 from pathlib import Path
+from io import StringIO
+import csv
+import difflib
+import logging
+from aiogram import Bot
+
+from shared.services.admin_audit_service import log_admin_action
+from shared.services.redis_service import (
+    schedule_contest_publish,
+    cancel_contest_publish,
+    acquire_lock,
+    release_lock,
+)
+from web.api.deps import verify_admin
+from bot.handlers.contest import (
+    publish_contest_to_channel,
+    publish_results_to_channel,
+    edit_contest_post,
+    format_contest_message,
+    format_results_message,
+)
+from shared.i18n import normalize_language
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 # Настройка папки для загрузки файлов
 UPLOAD_DIR = Path("uploads")
@@ -43,10 +66,24 @@ class ContestCreate(BaseModel):
     require_youtube_subscription: bool = False  # Требовать подписку на YouTube канал
     youtube_subscription_days_required: int = 0  # Минимальное количество дней подписки
     youtube_channel_id: Optional[str] = None  # ID YouTube канала (UC...)
+    require_twitch_follow: bool = False  # Требовать фолловинг на Twitch
+    twitch_follow_days_required: int = 0
+    twitch_channel_id: Optional[str] = None
+    require_kick_follow: bool = False  # Требовать фолловинг на Kick
+    kick_follow_days_required: int = 0
+    kick_channel_id: Optional[str] = None
+    message_thread_id: Optional[int] = None
 
 
 class YoutubeChannelCreate(BaseModel):
     """Модель создания YouTube канала"""
+    channel_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+class KickChannelCreate(BaseModel):
+    """Модель создания Kick канала"""
     channel_id: str
     title: Optional[str] = None
     description: Optional[str] = None
@@ -60,37 +97,86 @@ class ChannelCreate(BaseModel):
     youtube_channel_id: Optional[str] = None  # ID YouTube канала для проверки подписки
 
 
-def verify_admin(
-    user_id: Optional[int] = Query(None),
-    _auth: Optional[str] = Query(None, alias="_auth")
-) -> int:
-    """
-    Проверить, является ли пользователь администратором через Telegram WebApp
-    
-    @param user_id ID пользователя
-    @param _auth initData от Telegram WebApp
-    @return ID администратора
-    """
-    from web.services.telegram_auth import verify_telegram_webapp_initdata, is_admin
-    
-    # Проверяем initData если передан
-    if _auth:
-        auth_data = verify_telegram_webapp_initdata(_auth)
-        if not auth_data:
-            raise HTTPException(status_code=403, detail="Невалидные данные авторизации")
-        
-        auth_user_id = auth_data.get('user', {}).get('id')
-        if not is_admin(auth_user_id):
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-        
-        # Используем user_id из initData
-        if auth_user_id:
-            return auth_user_id
-    
-    # Fallback на проверку по user_id (для обратной совместимости)
-    if not user_id or user_id != config.admin_id:
-        raise HTTPException(status_code=403, detail="Доступ запрещен")
-    return user_id
+class PublishScheduleRequest(BaseModel):
+    """Запрос на отложенную публикацию конкурса"""
+    publish_at: str
+
+
+class RepublishContestRequest(BaseModel):
+    """Запрос на перепубликацию или обновление поста конкурса"""
+    mode: str = "repost"  # repost | edit
+
+
+class DuplicateContestRequest(BaseModel):
+    """Запрос на создание копии конкурса"""
+    title: Optional[str] = None
+    end_date: Optional[str] = None
+    include_prizes: bool = True
+    include_sponsors: bool = True
+
+
+class BulkContestActionRequest(BaseModel):
+    """Запрос на массовое действие по конкурсам"""
+    contest_ids: List[int]
+
+
+async def audit_admin(
+    db: AsyncSession,
+    admin_id: int,
+    action_type: str,
+    target_type: str,
+    target_id: Optional[str] = None,
+    contest_id: Optional[int] = None,
+    status: str = "success",
+    message: Optional[str] = None,
+    payload: Optional[dict] = None
+) -> None:
+    """Сохранить запись аудита и завершить flush."""
+    await log_admin_action(
+        db=db,
+        actor_user_id=admin_id,
+        action_type=action_type,
+        target_type=target_type,
+        target_id=target_id,
+        contest_id=contest_id,
+        status=status,
+        message=message,
+        payload=payload,
+    )
+
+
+def serialize_admin_action(action: AdminAction) -> dict:
+    contest_title = None
+    if action.payload and isinstance(action.payload, dict):
+        raw_title = action.payload.get("title")
+        if raw_title:
+            contest_title = str(raw_title)
+    if not contest_title and action.contest:
+        contest_title = action.contest.title
+
+    return {
+        "id": action.id,
+        "created_at": action.created_at.isoformat(),
+        "actor_user_id": action.actor_user_id,
+        "action_type": action.action_type,
+        "target_type": action.target_type,
+        "target_id": action.target_id,
+        "status": action.status,
+        "message": action.message,
+        "payload": action.payload,
+        "contest_title": contest_title,
+    }
+
+
+def build_text_diff(previous_text: str, next_text: str) -> str:
+    diff_lines = difflib.unified_diff(
+        previous_text.splitlines(),
+        next_text.splitlines(),
+        fromfile="previous",
+        tofile="current",
+        lineterm="",
+    )
+    return "\n".join(diff_lines)
 
 
 @router.get("/channels")
@@ -117,6 +203,40 @@ async def get_channels(
             "youtube_channel_id": channel.youtube_channel_id
         }
         for channel in channels
+    ]
+
+
+@router.get("/channels/{channel_id}/forum-topics")
+async def get_channel_forum_topics(
+    channel_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin),
+):
+    """
+    Получить известные топики forum-группы.
+    """
+    channel_result = await db.execute(
+        select(Channel).where(Channel.channel_id == channel_id, Channel.is_active == True)
+    )
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Канал или группа не найдены")
+
+    topics_result = await db.execute(
+        select(ForumTopic)
+        .where(ForumTopic.chat_id == channel_id, ForumTopic.is_active == True)
+        .order_by(ForumTopic.message_thread_id.asc())
+    )
+    topics = topics_result.scalars().all()
+
+    return [
+        {
+            "message_thread_id": topic.message_thread_id,
+            "name": topic.name,
+            "icon_color": topic.icon_color,
+            "icon_custom_emoji_id": topic.icon_custom_emoji_id,
+        }
+        for topic in topics
     ]
 
 
@@ -268,6 +388,15 @@ async def create_channel(
         existing.youtube_channel_id = data.youtube_channel_id.strip() if data.youtube_channel_id else None
         await db.commit()
         await db.refresh(existing)
+        await audit_admin(
+            db,
+            admin_id=admin_id,
+            action_type="channel_reactivated",
+            target_type="channel",
+            target_id=str(existing.channel_id),
+            payload={"channel_title": existing.channel_title}
+        )
+        await db.commit()
         return {
             "id": existing.id,
             "channel_id": existing.channel_id,
@@ -306,6 +435,15 @@ async def create_channel(
     db.add(channel)
     await db.commit()
     await db.refresh(channel)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="channel_created",
+        target_type="channel",
+        target_id=str(channel.channel_id),
+        payload={"channel_title": channel.channel_title}
+    )
+    await db.commit()
     
     return {
         "id": channel.id,
@@ -345,6 +483,15 @@ async def update_channel(
     channel.youtube_channel_id = data.youtube_channel_id.strip() if data.youtube_channel_id else None
     await db.commit()
     await db.refresh(channel)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="channel_updated",
+        target_type="channel",
+        target_id=str(channel.channel_id),
+        payload={"channel_title": channel.channel_title}
+    )
+    await db.commit()
     
     return {
         "id": channel.id,
@@ -378,6 +525,15 @@ async def delete_channel(
     
     channel.is_active = False
     await db.commit()
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="channel_deleted",
+        target_type="channel",
+        target_id=str(channel.channel_id),
+        payload={"channel_title": channel.channel_title}
+    )
+    await db.commit()
     
     return {"success": True}
 
@@ -386,7 +542,11 @@ async def delete_channel(
 async def get_contests(
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin),
-    status: Optional[str] = Query(None)
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    paginated: bool = Query(False),
 ):
     """
     Получить список конкурсов
@@ -396,8 +556,6 @@ async def get_contests(
     @param status фильтр по статусу
     @return список конкурсов
     """
-    service = ContestService(db)
-    
     # Используем подзапрос для подсчета участников вместо lazy loading
     from database.models import Participant
     
@@ -406,34 +564,70 @@ async def get_contests(
         .where(Participant.contest_id == Contest.id)
         .scalar_subquery()
     )
-    
-    if status:
-        query = select(
+
+    filters = []
+    normalized_status = (status or "").strip().lower()
+    if normalized_status:
+        if normalized_status == "scheduled":
+            filters.append(Contest.status == ContestStatus.DRAFT)
+            filters.append(Contest.publish_at.is_not(None))
+        else:
+            try:
+                filters.append(Contest.status == ContestStatus(normalized_status))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="Некорректный статус фильтра") from exc
+
+    search_value = (search or "").strip()
+    should_join_channel = bool(search_value)
+
+    if search_value:
+        search_pattern = f"%{search_value}%"
+        filters.append(
+            or_(
+                Contest.title.ilike(search_pattern),
+                Channel.channel_title.ilike(search_pattern),
+                Channel.channel_username.ilike(search_pattern),
+            )
+        )
+
+    base_query = (
+        select(
             Contest,
             participants_count_subquery.label('participants_count')
-        ).options(
-            selectinload(Contest.channel)
-        ).where(Contest.status == ContestStatus(status))
-    else:
-        query = select(
-            Contest,
-            participants_count_subquery.label('participants_count')
-        ).options(
+        )
+        .options(
             selectinload(Contest.channel),
             selectinload(Contest.prizes)
-        ).where(
-            Contest.status != ContestStatus.FINISHED,
-            Contest.status != ContestStatus.RESULTS_PUBLISHED
         )
-    
-    result = await db.execute(query.order_by(Contest.created_at.desc()))
+    )
+    if should_join_channel:
+        base_query = base_query.join(Channel, Contest.channel_id == Channel.channel_id, isouter=True)
+    if filters:
+        base_query = base_query.where(*filters)
+
+    if paginated:
+        total_query = select(func.count(Contest.id))
+        if should_join_channel:
+            total_query = total_query.join(Channel, Contest.channel_id == Channel.channel_id, isouter=True)
+        if filters:
+            total_query = total_query.where(*filters)
+        total_result = await db.execute(total_query)
+        total = int(total_result.scalar() or 0)
+        query = base_query.order_by(Contest.created_at.desc()).offset(offset).limit(limit)
+    else:
+        total = None
+        query = base_query.order_by(Contest.created_at.desc())
+
+    result = await db.execute(query)
     rows = result.all()
-    
-    return [
+
+    items = [
         {
             "id": contest.id,
             "title": contest.title,
+            "language": normalize_language(contest.language),
             "channel_id": contest.channel_id,
+            "message_thread_id": contest.message_thread_id,
             "channel": {
                 "channel_id": contest.channel.channel_id if contest.channel else None,
                 "channel_title": contest.channel.channel_title if contest.channel else None,
@@ -441,8 +635,18 @@ async def get_contests(
             } if contest.channel else None,
             "end_date": contest.end_date.isoformat(),
             "status": contest.status.value,
+            "publish_at": contest.publish_at.isoformat() if contest.publish_at else None,
             "participants_count": participants_count or 0,
             "prize_count": contest.prize_count,
+            "require_youtube_subscription": bool(contest.youtube_channel_id),
+            "youtube_subscription_days_required": contest.youtube_subscription_days_required,
+            "youtube_channel_id": contest.youtube_channel_id,
+            "require_twitch_follow": bool(contest.twitch_channel_id),
+            "twitch_follow_days_required": contest.twitch_follow_days_required,
+            "twitch_channel_id": contest.twitch_channel_id,
+            "require_kick_follow": bool(contest.kick_channel_id),
+            "kick_follow_days_required": contest.kick_follow_days_required,
+            "kick_channel_id": contest.kick_channel_id,
             "prizes": [
                 {
                     "id": p.id,
@@ -454,11 +658,22 @@ async def get_contests(
         for contest, participants_count in rows
     ]
 
+    if paginated:
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    return items
+
 
 @router.post("/contests")
 async def create_contest(
     title: str = Form(...),
     description: Optional[str] = Form(None),
+    language: str = Form("ru"),
     channel_id: int = Form(...),
     end_date: str = Form(...),
     prize_count: int = Form(...),
@@ -468,6 +683,13 @@ async def create_contest(
     require_youtube_subscription: bool = Form(False),
     youtube_subscription_days_required: int = Form(0),
     youtube_channel_id: Optional[str] = Form(None),
+    require_twitch_follow: bool = Form(False),
+    twitch_follow_days_required: int = Form(0),
+    twitch_channel_id: Optional[str] = Form(None),
+    require_kick_follow: bool = Form(False),
+    kick_follow_days_required: int = Form(0),
+    kick_channel_id: Optional[str] = Form(None),
+    message_thread_id: Optional[int] = Form(None),
     post_to_sponsors: bool = Form(False),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
@@ -486,6 +708,10 @@ async def create_contest(
     @param sponsors JSON строка со спонсорами
     @param require_youtube_subscription требуется ли подписка на YouTube
     @param youtube_subscription_days_required минимальное количество дней подписки
+    @param require_twitch_follow требуется ли фолловинг Twitch
+    @param twitch_follow_days_required минимальное количество дней фолловинга Twitch
+    @param require_kick_follow требуется ли фолловинг Kick
+    @param kick_follow_days_required минимальное количество дней фолловинга Kick
     @param image загружаемое изображение
     @param db сессия БД
     @param admin_id ID администратора
@@ -494,6 +720,7 @@ async def create_contest(
     import json
     
     service = ContestService(db)
+    contest_language = normalize_language(language)
     
     # Сохраняем изображение, если загружено
     image_path = None
@@ -521,6 +748,20 @@ async def create_contest(
         sponsors_data = json.loads(sponsors) if sponsors else None
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Ошибка парсинга JSON: {str(e)}")
+
+    if sponsors_data:
+        sponsor_ids = [int(sponsor["channel_id"]) for sponsor in sponsors_data]
+        duplicate_ids = sorted({str(cid) for cid in sponsor_ids if sponsor_ids.count(cid) > 1})
+        if duplicate_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Каналы-спонсоры повторяются: {', '.join(duplicate_ids)}"
+            )
+        if channel_id in sponsor_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Основной канал конкурса нельзя одновременно указывать как канал-спонсор"
+            )
     
     # Обрабатываем дату: используем dateutil.parser для надежного парсинга
     try:
@@ -532,7 +773,7 @@ async def create_contest(
         if end_date.tzinfo is not None:
             # Если дата с таймзоной, конвертируем в киевское время
             from pytz import timezone
-            kiev_tz = timezone('Europe/Kiev')
+            kiev_tz = timezone('Europe/Kyiv')
             end_date = end_date.astimezone(kiev_tz)
         
         # Убираем таймзону для сохранения в БД (TIMESTAMP WITHOUT TIME ZONE)
@@ -554,7 +795,7 @@ async def create_contest(
                 # Если есть таймзона, конвертируем в киевское время и убираем её
                 if end_date.tzinfo is not None:
                     from pytz import timezone
-                    kiev_tz = timezone('Europe/Kiev')
+                    kiev_tz = timezone('Europe/Kyiv')
                     end_date = end_date.astimezone(kiev_tz)
                     end_date = end_date.replace(tzinfo=None)
         except (ValueError, AttributeError) as e2:
@@ -587,17 +828,61 @@ async def create_contest(
                 status_code=400,
                 detail="Для этого конкурса требуется подписка на YouTube канал, но YouTube канал не выбран."
             )
+
+    final_twitch_channel_id = None
+    if require_twitch_follow:
+        if twitch_channel_id and twitch_channel_id.strip():
+            final_twitch_channel_id = twitch_channel_id.strip()
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Для этого конкурса требуется Twitch-канал, но он не указан."
+            )
+
+    final_kick_channel_id = None
+    if require_kick_follow:
+        if kick_channel_id and kick_channel_id.strip():
+            final_kick_channel_id = kick_channel_id.strip()
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Для этого конкурса требуется Kick-канал, но он не указан."
+            )
+
+    final_message_thread_id = message_thread_id if message_thread_id and message_thread_id > 0 else None
+    if final_message_thread_id:
+        topic_result = await db.execute(
+            select(ForumTopic).where(
+                ForumTopic.chat_id == channel_id,
+                ForumTopic.message_thread_id == final_message_thread_id,
+            )
+        )
+        if not topic_result.scalar_one_or_none():
+            db.add(
+                ForumTopic(
+                    chat_id=channel_id,
+                    message_thread_id=final_message_thread_id,
+                    name=f"Топик #{final_message_thread_id}",
+                    is_active=True,
+                )
+            )
     
     # Создаем конкурс
     contest = await service.create_contest(
         title=title,
+        language=contest_language,
         channel_id=channel_id,
+        message_thread_id=final_message_thread_id,
         end_date=end_date,
         prize_count=prize_count,
         draw_method=draw_method,
         description=description,
         youtube_channel_id=final_youtube_channel_id,
         youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
+        twitch_channel_id=final_twitch_channel_id,
+        twitch_follow_days_required=twitch_follow_days_required if require_twitch_follow else 0,
+        kick_channel_id=final_kick_channel_id,
+        kick_follow_days_required=kick_follow_days_required if require_kick_follow else 0,
         image_path=image_path,
         post_to_sponsors=post_to_sponsors
     )
@@ -625,11 +910,135 @@ async def create_contest(
     
     await db.commit()
     await db.refresh(contest)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_created",
+        target_type="contest",
+        target_id=str(contest.id),
+        contest_id=contest.id,
+        payload={
+            "title": contest.title,
+            "language": contest.language,
+            "channel_id": contest.channel_id,
+            "message_thread_id": contest.message_thread_id,
+            "sponsors": sponsors_data or [],
+            "require_youtube_subscription": require_youtube_subscription,
+            "require_twitch_follow": require_twitch_follow,
+            "require_kick_follow": require_kick_follow,
+        }
+    )
+    await db.commit()
     
     return {
         "id": contest.id,
         "title": contest.title,
         "status": contest.status.value
+    }
+
+
+@router.post("/contests/{contest_id}/duplicate")
+async def duplicate_contest(
+    contest_id: int,
+    data: DuplicateContestRequest = Body(default_factory=DuplicateContestRequest),
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin),
+):
+    """
+    Создать новый черновик как копию существующего конкурса.
+    """
+    service = ContestService(db)
+    source = await service.get_contest_by_id(contest_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Исходный конкурс не найден")
+
+    duplicate_title = (data.title or f"{source.title} (копия)").strip()
+    if not duplicate_title:
+        raise HTTPException(status_code=400, detail="Название нового конкурса не может быть пустым")
+
+    if data.end_date:
+        try:
+            parsed_end = date_parser.parse(data.end_date)
+            if parsed_end.tzinfo is not None:
+                from pytz import timezone
+                parsed_end = parsed_end.astimezone(timezone('Europe/Kyiv')).replace(tzinfo=None)
+            end_date = parsed_end
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Некорректный формат даты окончания") from exc
+    else:
+        end_date = datetime.now() + timedelta(days=7)
+
+    new_contest = await service.create_contest(
+        title=duplicate_title,
+        language=normalize_language(source.language),
+        channel_id=source.channel_id,
+        message_thread_id=source.message_thread_id,
+        end_date=end_date,
+        prize_count=source.prize_count,
+        draw_method=source.draw_method,
+        description=source.description,
+        youtube_channel_id=source.youtube_channel_id,
+        youtube_subscription_days_required=source.youtube_subscription_days_required,
+        twitch_channel_id=source.twitch_channel_id,
+        twitch_follow_days_required=source.twitch_follow_days_required,
+        kick_channel_id=source.kick_channel_id,
+        kick_follow_days_required=source.kick_follow_days_required,
+        image_path=source.image_path,
+        post_to_sponsors=source.post_to_sponsors,
+        publish_at=None,
+    )
+
+    if data.include_prizes and source.prizes:
+        for source_prize in source.prizes:
+            db.add(
+                Prize(
+                    contest_id=new_contest.id,
+                    place=source_prize.place,
+                    title=source_prize.title,
+                    description=source_prize.description,
+                )
+            )
+
+    if data.include_sponsors and source.sponsors:
+        for source_sponsor in source.sponsors:
+            db.add(
+                Sponsor(
+                    contest_id=new_contest.id,
+                    channel_id=source_sponsor.channel_id,
+                    channel_title=source_sponsor.channel_title,
+                    channel_username=source_sponsor.channel_username,
+                )
+            )
+
+    await db.commit()
+    await db.refresh(new_contest)
+
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_duplicated",
+        target_type="contest",
+        target_id=str(new_contest.id),
+        contest_id=new_contest.id,
+        payload={
+            "source_contest_id": source.id,
+            "source_title": source.title,
+            "title": new_contest.title,
+            "language": new_contest.language,
+            "include_prizes": data.include_prizes,
+            "include_sponsors": data.include_sponsors,
+        }
+    )
+    await db.commit()
+
+    return {
+        "success": True,
+        "contest": {
+            "id": new_contest.id,
+            "title": new_contest.title,
+            "status": new_contest.status.value,
+            "end_date": new_contest.end_date.isoformat(),
+        }
     }
 
 
@@ -647,86 +1056,210 @@ async def draw_winners(
     @param admin_id ID администратора
     @return результат розыгрыша
     """
-    from shared.services.contest_service import ContestService
-    from database.models.contest import ContestStatus
-    
-    # Проверяем, что конкурс существует и активен
-    contest_service = ContestService(db)
-    contest = await contest_service.get_contest_by_id(contest_id)
-    
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
-    
-    if contest.status != ContestStatus.ACTIVE:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Конкурс уже завершен или не опубликован. Текущий статус: {contest.status.value}"
+    lock_key = f"contest:draw:{contest_id}"
+    lock_acquired = await acquire_lock(lock_key, timeout=60)
+    if not lock_acquired:
+        raise HTTPException(status_code=409, detail="Розыгрыш уже выполняется, попробуйте позже")
+
+    try:
+        # Проверяем, что конкурс существует и активен
+        contest_service = ContestService(db)
+        contest = await contest_service.get_contest_by_id(contest_id)
+        
+        if not contest:
+            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        
+        if contest.status != ContestStatus.ACTIVE:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Конкурс уже завершен или не опубликован. Текущий статус: {contest.status.value}"
+            )
+        
+        # Проверяем количество участников
+        participants_count = await contest_service.get_participants_count(contest_id)
+        prizes_count = len(contest.prizes) if contest.prizes else 0
+        
+        if participants_count < prizes_count:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Недостаточно участников для розыгрыша. Зарегистрировано: {participants_count}, требуется: {prizes_count}"
+            )
+        
+        # Проводим розыгрыш
+        draw_service = DrawService(db)
+        success = await draw_service.draw_winners(contest_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=400, 
+                detail="Не удалось провести розыгрыш. Возможно, недостаточно участников."
+            )
+        
+        # Получаем firstname победителей из Telegram API
+        from aiogram import Bot
+        from shared.config import config
+        bot = Bot(token=config.bot_token)
+        try:
+            # Обновляем конкурс для получения призов с победителями
+            await db.refresh(contest)
+            prizes = sorted(contest.prizes, key=lambda p: p.place)
+            winners = [p for p in prizes if p.winner_user_id]
+            
+            for prize in winners:
+                if prize.winner_user_id:
+                    try:
+                        # Пытаемся получить информацию о пользователе через канал
+                        member = await bot.get_chat_member(chat_id=contest.channel_id, user_id=prize.winner_user_id)
+                        if member.user:
+                            prize.winner_firstname = member.user.first_name
+                    except Exception:
+                        # Если не удалось получить, оставляем None
+                        pass
+            
+            await db.commit()
+        finally:
+            await bot.session.close()
+        
+        # Обновляем статус конкурса на FINISHED
+        contest.status = ContestStatus.FINISHED
+        await db.commit()
+        await db.refresh(contest)
+        
+        # Получаем победителей
+        winners = await draw_service.get_winners(contest_id)
+
+        await audit_admin(
+            db,
+            admin_id=admin_id,
+            action_type="contest_drawn",
+            target_type="contest",
+            target_id=str(contest_id),
+            contest_id=contest_id,
+            payload={
+                "winners": [
+                    {
+                        "place": prize.place,
+                        "winner_user_id": prize.winner_user_id,
+                        "winner_username": prize.winner_username,
+                    }
+                    for prize in winners
+                ]
+            }
         )
-    
-    # Проверяем количество участников
-    participants_count = await contest_service.get_participants_count(contest_id)
-    prizes_count = len(contest.prizes) if contest.prizes else 0
-    
-    if participants_count < prizes_count:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Недостаточно участников для розыгрыша. Зарегистрировано: {participants_count}, требуется: {prizes_count}"
-        )
-    
-    # Проводим розыгрыш
-    draw_service = DrawService(db)
-    success = await draw_service.draw_winners(contest_id)
-    
-    if not success:
-        raise HTTPException(
-            status_code=400, 
-            detail="Не удалось провести розыгрыш. Возможно, недостаточно участников."
-        )
-    
-    # Получаем firstname победителей из Telegram API
-    from aiogram import Bot
-    from shared.config import config
+        await db.commit()
+        
+        return {
+            "success": True,
+            "winners": [
+                {
+                    "place": prize.place,
+                    "title": prize.title,
+                    "winner_username": prize.winner_username
+                }
+                for prize in winners
+            ]
+        }
+    finally:
+        await release_lock(lock_key)
+
+
+@router.post("/contests/{contest_id}/repair")
+async def repair_contest(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Попытаться автоматически восстановить неконсистентное состояние конкурса.
+    """
+    lock_key = f"contest:repair:{contest_id}"
+    lock_acquired = await acquire_lock(lock_key, timeout=90)
+    if not lock_acquired:
+        raise HTTPException(status_code=409, detail="Восстановление уже выполняется, попробуйте позже")
+
     bot = Bot(token=config.bot_token)
     try:
-        # Обновляем конкурс для получения призов с победителями
+        contest_service = ContestService(db)
+        draw_service = DrawService(db)
+        contest = await contest_service.get_contest_by_id(contest_id)
+
+        if not contest:
+            raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+        actions: list[str] = []
+        webapp_url = f"https://{config.ngrok_domain}" if config.ngrok_enabled and config.ngrok_domain else config.webapp_url
+
+        if contest.status == ContestStatus.ACTIVE and not contest.message_id:
+            published = await publish_contest_to_channel(contest_id, bot, webapp_url)
+            if published:
+                actions.append("contest_post_restored")
+            else:
+                raise HTTPException(status_code=400, detail="Не удалось восстановить публикацию конкурса")
+
         await db.refresh(contest)
-        prizes = sorted(contest.prizes, key=lambda p: p.place)
-        winners = [p for p in prizes if p.winner_user_id]
-        
-        for prize in winners:
-            if prize.winner_user_id:
-                try:
-                    # Пытаемся получить информацию о пользователе через канал
-                    member = await bot.get_chat_member(chat_id=contest.channel_id, user_id=prize.winner_user_id)
-                    if member.user:
-                        prize.winner_firstname = member.user.first_name
-                except Exception:
-                    # Если не удалось получить, оставляем None
-                    pass
-        
+        prizes = sorted(contest.prizes or [], key=lambda prize: prize.place)
+        participants_count = await contest_service.get_participants_count(contest_id)
+        missing_winners = [prize for prize in prizes if not prize.winner_user_id]
+
+        if contest.status in (ContestStatus.FINISHED, ContestStatus.RESULTS_PUBLISHED) and missing_winners:
+            if participants_count < len(prizes):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Недостаточно участников для восстановления победителей. Зарегистрировано: {participants_count}, требуется: {len(prizes)}"
+                )
+
+            draw_success = await draw_service.draw_winners(contest_id)
+            if draw_success:
+                actions.append("winners_restored")
+            else:
+                raise HTTPException(status_code=400, detail="Не удалось восстановить победителей конкурса")
+
+        await db.refresh(contest)
+        if contest.status == ContestStatus.RESULTS_PUBLISHED and not contest.results_message_id:
+            published_results = await publish_results_to_channel(contest_id, bot, webapp_url)
+            if published_results:
+                actions.append("results_post_restored")
+            else:
+                raise HTTPException(status_code=400, detail="Не удалось восстановить публикацию результатов")
+
+        if contest.status == ContestStatus.DRAFT and contest.publish_at:
+            now_result = await db.execute(select(func.now()))
+            now_db = now_result.scalar()
+            if now_db and getattr(now_db, "tzinfo", None) is not None:
+                now_db = now_db.replace(tzinfo=None)
+            if contest.publish_at <= now_db:
+                published = await publish_contest_to_channel(contest_id, bot, webapp_url)
+                if published:
+                    actions.append("overdue_publish_recovered")
+                else:
+                    raise HTTPException(status_code=400, detail="Не удалось восстановить просроченную публикацию")
+
+        if not actions:
+            return {
+                "success": True,
+                "message": "Проблем, требующих восстановления, не найдено",
+                "actions": [],
+            }
+
+        await audit_admin(
+            db,
+            admin_id=admin_id,
+            action_type="contest_repaired",
+            target_type="contest",
+            target_id=str(contest_id),
+            contest_id=contest_id,
+            payload={"actions": actions},
+        )
         await db.commit()
+
+        return {
+            "success": True,
+            "message": "Восстановление выполнено",
+            "actions": actions,
+        }
     finally:
         await bot.session.close()
-    
-    # Обновляем статус конкурса на FINISHED
-    contest.status = ContestStatus.FINISHED
-    await db.commit()
-    await db.refresh(contest)
-    
-    # Получаем победителей
-    winners = await draw_service.get_winners(contest_id)
-    
-    return {
-        "success": True,
-        "winners": [
-            {
-                "place": prize.place,
-                "title": prize.title,
-                "winner_username": prize.winner_username
-            }
-            for prize in winners
-        ]
-    }
+        await release_lock(lock_key)
 
 
 @router.delete("/contests/{contest_id}")
@@ -739,8 +1272,20 @@ async def delete_contest(
     Удалить конкурс
     """
     contest_service = ContestService(db)
+    contest = await contest_service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_deleted",
+        target_type="contest",
+        target_id=str(contest_id),
+        contest_id=contest_id,
+        payload={"title": contest.title, "status": contest.status.value}
+    )
     success = await contest_service.delete_contest(contest_id)
-    
     if not success:
         raise HTTPException(status_code=404, detail="Конкурс не найден")
         
@@ -777,6 +1322,494 @@ async def get_contest_stats(
         "prize_count": contest.prize_count,
         "end_date": contest.end_date.isoformat()
     }
+
+
+@router.get("/contests/{contest_id}/preview")
+async def get_contest_preview(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить предпросмотр поста конкурса
+    """
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+    from aiogram import Bot
+    bot = Bot(token=config.bot_token)
+    try:
+        bot_info = await bot.get_me()
+        if not bot_info.username:
+            raise HTTPException(status_code=500, detail="Не удалось получить username бота")
+        text, keyboard = await format_contest_message(contest, bot, bot_info.username, resolve_private_links=False)
+        button_url = None
+        if keyboard.inline_keyboard and keyboard.inline_keyboard[0]:
+            button_url = keyboard.inline_keyboard[0][0].url
+    finally:
+        await bot.session.close()
+
+    return {
+        "contest_id": contest.id,
+        "title": contest.title,
+        "status": contest.status.value,
+        "scheduled_for": contest.publish_at.isoformat() if contest.publish_at else None,
+        "text": text,
+        "button_url": button_url,
+        "has_image": bool(contest.image_path),
+    }
+
+
+@router.get("/contests/{contest_id}/republish-diff")
+async def get_republish_diff(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Показать diff между последним опубликованным текстом и текущим рендером.
+    """
+    contest_service = ContestService(db)
+    contest = await contest_service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+    from aiogram import Bot
+    bot = Bot(token=config.bot_token)
+    try:
+        bot_info = await bot.get_me()
+        text, keyboard = await format_contest_message(contest, bot, bot_info.username, resolve_private_links=False)
+        button_url = None
+        if keyboard.inline_keyboard and keyboard.inline_keyboard[0]:
+            button_url = keyboard.inline_keyboard[0][0].url
+    finally:
+        await bot.session.close()
+
+    latest_action_result = await db.execute(
+        select(AdminAction)
+        .where(
+            AdminAction.contest_id == contest_id,
+            AdminAction.action_type.in_(["contest_published", "contest_republished", "contest_post_edited"])
+        )
+        .order_by(AdminAction.created_at.desc())
+        .limit(1)
+    )
+    latest_action = latest_action_result.scalar_one_or_none()
+    previous_text = ""
+    has_baseline = False
+    if latest_action and latest_action.payload and isinstance(latest_action.payload, dict):
+        previous_text = str(latest_action.payload.get("rendered_text") or "")
+        has_baseline = bool(previous_text)
+
+    diff_text = build_text_diff(previous_text, text)
+    return {
+        "contest_id": contest.id,
+        "title": contest.title,
+        "previous_text": previous_text,
+        "current_text": text,
+        "button_url": button_url,
+        "diff": diff_text,
+        "has_changes": previous_text != text,
+        "has_baseline": has_baseline,
+    }
+
+
+@router.get("/contests/{contest_id}/results-preview")
+async def get_results_preview(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить черновик результатов конкурса перед публикацией
+    """
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+    from aiogram import Bot
+    bot = Bot(token=config.bot_token)
+    try:
+        bot_info = await bot.get_me()
+        if not bot_info.username:
+            raise HTTPException(status_code=500, detail="Не удалось получить username бота")
+        text, keyboard = format_results_message(contest, bot_info.username)
+        button_url = None
+        if keyboard.inline_keyboard and keyboard.inline_keyboard[0]:
+            button_url = keyboard.inline_keyboard[0][0].url
+    finally:
+        await bot.session.close()
+
+    winners = [
+        {
+            "place": prize.place,
+            "title": prize.title,
+            "winner_user_id": prize.winner_user_id,
+            "winner_username": prize.winner_username,
+            "winner_firstname": prize.winner_firstname,
+        }
+        for prize in sorted(contest.prizes, key=lambda p: p.place)
+        if prize.winner_user_id
+    ]
+
+    return {
+        "contest_id": contest.id,
+        "title": contest.title,
+        "status": contest.status.value,
+        "text": text,
+        "button_url": button_url,
+        "winners": winners,
+    }
+
+
+@router.get("/contests/{contest_id}/history")
+async def get_contest_history(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить историю действий по конкурсу
+    """
+    result = await db.execute(
+        select(AdminAction)
+        .options(selectinload(AdminAction.contest))
+        .where(AdminAction.contest_id == contest_id)
+        .order_by(AdminAction.created_at.desc())
+    )
+    actions = result.scalars().all()
+
+    return [serialize_admin_action(action) for action in actions]
+
+
+@router.get("/actions/recent")
+async def get_recent_admin_actions(
+    limit: int = Query(10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить последние действия администратора по всему проекту
+    """
+    result = await db.execute(
+        select(AdminAction)
+        .options(selectinload(AdminAction.contest))
+        .order_by(AdminAction.created_at.desc())
+        .limit(limit)
+    )
+    actions = result.scalars().all()
+    return [serialize_admin_action(action) for action in actions]
+
+
+@router.get("/contests/{contest_id}/participants/export")
+async def export_contest_participants(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Экспорт участников конкурса в CSV
+    """
+    contest_service = ContestService(db)
+    contest = await contest_service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+    participants = sorted(contest.participants, key=lambda participant: participant.registration_number)
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "registration_number",
+        "user_id",
+        "username",
+        "first_name",
+        "last_name",
+        "registered_at",
+        "activity_score",
+    ])
+    for participant in participants:
+        writer.writerow([
+            participant.registration_number,
+            participant.user_id,
+            participant.username or "",
+            participant.first_name or "",
+            participant.last_name or "",
+            participant.registered_at.isoformat() if participant.registered_at else "",
+            participant.activity_score,
+        ])
+    buffer.seek(0)
+
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_participants_exported",
+        target_type="contest",
+        target_id=str(contest_id),
+        contest_id=contest_id,
+        payload={"participants_count": len(participants)}
+    )
+    await db.commit()
+
+    filename = f"contest_{contest_id}_participants.csv"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@router.post("/contests/{contest_id}/schedule-publish")
+async def schedule_contest_publication(
+    contest_id: int,
+    data: PublishScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Запланировать публикацию конкурса
+    """
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    if contest.status != ContestStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Отложенная публикация доступна только для черновиков")
+
+    try:
+        publish_at = date_parser.parse(data.publish_at)
+        if publish_at.tzinfo is not None:
+            from pytz import timezone
+            publish_at = publish_at.astimezone(timezone('Europe/Kyiv')).replace(tzinfo=None)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"Неверный формат даты публикации: {e}")
+
+    now_result = await db.execute(select(func.now()))
+    now_db = now_result.scalar()
+    if now_db and getattr(now_db, "tzinfo", None) is not None:
+        publish_at_now_compare = publish_at
+        now_db = now_db.replace(tzinfo=None)
+    else:
+        publish_at_now_compare = publish_at
+
+    if publish_at_now_compare <= now_db:
+        raise HTTPException(status_code=400, detail="Дата отложенной публикации должна быть позже текущего времени")
+
+    await service.schedule_publish(contest_id, publish_at)
+    await schedule_contest_publish(contest_id, publish_at)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_publish_scheduled",
+        target_type="contest",
+        target_id=str(contest_id),
+        contest_id=contest_id,
+        payload={"publish_at": publish_at.isoformat()}
+    )
+    await db.commit()
+
+    return {"success": True, "publish_at": publish_at.isoformat()}
+
+
+@router.post("/contests/{contest_id}/cancel-schedule-publish")
+async def cancel_scheduled_contest_publication(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Отменить отложенную публикацию конкурса
+    """
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    if contest.status != ContestStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Отменить публикацию можно только у черновика")
+    if not contest.publish_at:
+        raise HTTPException(status_code=400, detail="У конкурса нет активной отложенной публикации")
+
+    contest.publish_at = None
+    await db.commit()
+    await cancel_contest_publish(contest_id)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_publish_schedule_canceled",
+        target_type="contest",
+        target_id=str(contest_id),
+        contest_id=contest_id,
+    )
+    await db.commit()
+
+    return {"success": True}
+
+
+@router.post("/contests/bulk/publish-now")
+async def bulk_publish_now(
+    data: BulkContestActionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Массовая немедленная публикация конкурсов (черновиков).
+    """
+    contest_ids = sorted({contest_id for contest_id in data.contest_ids if contest_id > 0})
+    if not contest_ids:
+        raise HTTPException(status_code=400, detail="Список конкурсов пуст")
+
+    bot = Bot(token=config.bot_token)
+    contest_service = ContestService(db)
+    published_ids: list[int] = []
+    skipped: list[dict] = []
+    try:
+        for contest_id in contest_ids:
+            contest = await contest_service.get_contest_by_id(contest_id)
+            if not contest:
+                skipped.append({"contest_id": contest_id, "reason": "not_found"})
+                continue
+            if contest.status == ContestStatus.ACTIVE and contest.message_id:
+                skipped.append({"contest_id": contest_id, "reason": "already_published"})
+                continue
+            if contest.status not in (ContestStatus.DRAFT, ContestStatus.ACTIVE):
+                skipped.append({"contest_id": contest_id, "reason": f"invalid_status:{contest.status.value}"})
+                continue
+            if contest.status == ContestStatus.ACTIVE and not contest.message_id:
+                logger.warning(
+                    "bulk_publish_now: конкурс %s имеет статус active без message_id, выполняем восстановительную публикацию",
+                    contest_id,
+                )
+
+            success = await publish_contest_to_channel(contest_id, bot, config.webapp_url)
+            if success:
+                published_ids.append(contest_id)
+                await cancel_contest_publish(contest_id)
+                await audit_admin(
+                    db,
+                    admin_id=admin_id,
+                    action_type="contest_published",
+                    target_type="contest",
+                    target_id=str(contest_id),
+                    contest_id=contest_id,
+                    payload={"source": "bulk_publish_now"}
+                )
+            else:
+                skipped.append({"contest_id": contest_id, "reason": "publish_failed"})
+        await db.commit()
+    finally:
+        await bot.session.close()
+
+    return {
+        "success": True,
+        "published_count": len(published_ids),
+        "published_ids": published_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/contests/bulk/cancel-schedule")
+async def bulk_cancel_schedule(
+    data: BulkContestActionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Массовая отмена отложенной публикации для черновиков.
+    """
+    contest_ids = sorted({contest_id for contest_id in data.contest_ids if contest_id > 0})
+    if not contest_ids:
+        raise HTTPException(status_code=400, detail="Список конкурсов пуст")
+
+    updated_ids: list[int] = []
+    skipped: list[dict] = []
+    contest_service = ContestService(db)
+
+    for contest_id in contest_ids:
+        contest = await contest_service.get_contest_by_id(contest_id)
+        if not contest:
+            skipped.append({"contest_id": contest_id, "reason": "not_found"})
+            continue
+        if contest.status != ContestStatus.DRAFT:
+            skipped.append({"contest_id": contest_id, "reason": f"invalid_status:{contest.status.value}"})
+            continue
+        if not contest.publish_at:
+            skipped.append({"contest_id": contest_id, "reason": "schedule_not_set"})
+            continue
+
+        contest.publish_at = None
+        updated_ids.append(contest_id)
+        await cancel_contest_publish(contest_id)
+        await audit_admin(
+            db,
+            admin_id=admin_id,
+            action_type="contest_publish_schedule_canceled",
+            target_type="contest",
+            target_id=str(contest_id),
+            contest_id=contest_id,
+            payload={"source": "bulk_cancel_schedule"}
+        )
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "updated_count": len(updated_ids),
+        "updated_ids": updated_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/contests/{contest_id}/republish")
+async def republish_contest(
+    contest_id: int,
+    data: RepublishContestRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Перепубликовать конкурс или обновить существующий пост
+    """
+    contest_service = ContestService(db)
+    contest = await contest_service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    if contest.status != ContestStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Перепубликация доступна только для активных конкурсов")
+
+    from aiogram import Bot
+    bot = Bot(token=config.bot_token)
+    rendered_text = None
+    rendered_button_url = None
+    try:
+        bot_info = await bot.get_me()
+        rendered_text, preview_keyboard = await format_contest_message(contest, bot, bot_info.username, resolve_private_links=False)
+        if preview_keyboard.inline_keyboard and preview_keyboard.inline_keyboard[0]:
+            rendered_button_url = preview_keyboard.inline_keyboard[0][0].url
+
+        if data.mode == "edit":
+            success = await edit_contest_post(contest_id, bot)
+        else:
+            success = await publish_contest_to_channel(contest_id, bot, config.webapp_url, force_republish=True)
+    finally:
+        await bot.session.close()
+
+    if not success:
+        raise HTTPException(status_code=400, detail="Не удалось выполнить операцию перепубликации")
+
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_republished" if data.mode != "edit" else "contest_post_edited",
+        target_type="contest",
+        target_id=str(contest_id),
+        contest_id=contest_id,
+        payload={
+            "mode": data.mode,
+            "rendered_text": rendered_text,
+            "button_url": rendered_button_url,
+        }
+    )
+    await db.commit()
+    return {"success": True}
 
 
 @router.get("/youtube-channels")
@@ -843,6 +1876,15 @@ async def add_youtube_channel(
     db.add(channel)
     await db.commit()
     await db.refresh(channel)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="youtube_channel_created",
+        target_type="youtube_channel",
+        target_id=channel.channel_id,
+        payload={"title": channel.title}
+    )
+    await db.commit()
     
     return {
         "channel_id": channel.channel_id,
@@ -870,5 +1912,118 @@ async def delete_youtube_channel(
     
     await db.delete(channel)
     await db.commit()
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="youtube_channel_deleted",
+        target_type="youtube_channel",
+        target_id=channel.channel_id,
+        payload={"title": channel.title}
+    )
+    await db.commit()
     
+    return {"success": True}
+
+
+@router.get("/kick-channels")
+async def get_kick_channels(
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить список Kick каналов
+    """
+    result = await db.execute(select(KickChannel))
+    channels = result.scalars().all()
+
+    return [
+        {
+            "channel_id": c.channel_id,
+            "title": c.title,
+            "description": c.description
+        }
+        for c in channels
+    ]
+
+
+@router.post("/kick-channels")
+async def add_kick_channel(
+    data: KickChannelCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Добавить Kick канал
+    """
+    channel_id = data.channel_id.strip()
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="ID Kick канала не может быть пустым")
+
+    channel_id = channel_id.replace("https://kick.com/", "").replace("http://kick.com/", "").strip("/")
+
+    result = await db.execute(
+        select(KickChannel).where(KickChannel.channel_id == channel_id)
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Такой Kick канал уже добавлен")
+
+    title = (data.title or channel_id).strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Название Kick канала не может быть пустым")
+
+    channel = KickChannel(
+        channel_id=channel_id,
+        title=title,
+        description=data.description
+    )
+    db.add(channel)
+    await db.commit()
+    await db.refresh(channel)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="kick_channel_created",
+        target_type="kick_channel",
+        target_id=channel.channel_id,
+        payload={"title": channel.title}
+    )
+    await db.commit()
+
+    return {
+        "channel_id": channel.channel_id,
+        "title": channel.title,
+        "description": channel.description
+    }
+
+
+@router.delete("/kick-channels/{channel_id}")
+async def delete_kick_channel(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Удалить Kick канал
+    """
+    result = await db.execute(
+        select(KickChannel).where(KickChannel.channel_id == channel_id)
+    )
+    channel = result.scalar_one_or_none()
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Kick канал не найден")
+
+    await db.delete(channel)
+    await db.commit()
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="kick_channel_deleted",
+        target_type="kick_channel",
+        target_id=channel.channel_id,
+        payload={"title": channel.title}
+    )
+    await db.commit()
+
     return {"success": True}

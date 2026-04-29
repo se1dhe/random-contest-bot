@@ -28,7 +28,9 @@ class Contest(BaseModel):
     
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
+    language = Column(String(8), default="ru", nullable=False)
     channel_id = Column(BigInteger, ForeignKey('channels.channel_id'), nullable=False, index=True)
+    message_thread_id = Column(Integer, nullable=True)  # ID топика в forum-группе Telegram
     message_id = Column(BigInteger, nullable=True)  # ID сообщения в канале
     results_message_id = Column(BigInteger, nullable=True)  # ID сообщения с результатами
     end_date = Column(DateTime, nullable=False)
@@ -37,8 +39,13 @@ class Contest(BaseModel):
     prize_count = Column(Integer, nullable=False)  # Количество призовых мест
     youtube_channel_id = Column(String(255), nullable=True)  # ID YouTube канала для обязательной подписки
     youtube_subscription_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней подписки
+    twitch_channel_id = Column(String(255), nullable=True)  # ID/логин Twitch канала для обязательного фолловинга
+    twitch_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Twitch
+    kick_channel_id = Column(String(255), nullable=True)  # ID/slug Kick канала для обязательного фолловинга
+    kick_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Kick
     image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
     post_to_sponsors = Column(Boolean, default=False, nullable=False)
+    publish_at = Column(DateTime, nullable=True)  # Отложенная публикация конкурса
     
     # Связи
     channel = relationship("Channel", backref="contests")

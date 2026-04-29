@@ -19,11 +19,8 @@ from shared.config import config
 # this is the Alembic Config object
 alembic_cfg = context.config
 
-# Устанавливаем URL БД из конфигурации
-alembic_cfg.set_main_option(
-    'sqlalchemy.url',
-    f"postgresql+asyncpg://{config.db_user}:{config.db_password}@{config.db_host}:{config.db_port}/{config.db_name}"
-)
+# Устанавливаем URL БД из конфигурации/окружения
+alembic_cfg.set_main_option('sqlalchemy.url', config.database_url)
 
 # Interpret the config file for Python logging.
 if alembic_cfg.config_file_name is not None:
@@ -78,4 +75,3 @@ if context.is_offline_mode():
 else:
     import asyncio
     asyncio.run(run_migrations_online())
-

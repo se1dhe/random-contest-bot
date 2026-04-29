@@ -1,11 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/Layout';
-import { RegistrationPage } from './pages/RegistrationPage';
-import { ResultsPage } from './pages/ResultsPage';
-import { AdminPage } from './pages/AdminPage';
 import { useTelegram } from './hooks/useTelegram';
+
+const RegistrationPage = lazy(() =>
+  import('./pages/RegistrationPage').then((module) => ({ default: module.RegistrationPage }))
+);
+const ResultsPage = lazy(() =>
+  import('./pages/ResultsPage').then((module) => ({ default: module.ResultsPage }))
+);
+const AdminPage = lazy(() =>
+  import('./pages/AdminPage').then((module) => ({ default: module.AdminPage }))
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,12 +50,14 @@ const App: React.FC = () => {
       <Router>
         <NavigationManager>
           <Layout>
-            <Routes>
-              <Route path="/register" element={<RegistrationPage />} />
-              <Route path="/results/:contestId" element={<ResultsPage />} />
-              <Route path="/admin" element={<AdminPage />} />
-              <Route path="*" element={<Navigate to="/register" replace />} />
-            </Routes>
+            <Suspense fallback={<div className="px-6 py-10 text-center text-sm text-white/40">Загрузка...</div>}>
+              <Routes>
+                <Route path="/register" element={<RegistrationPage />} />
+                <Route path="/results/:contestId" element={<ResultsPage />} />
+                <Route path="/admin" element={<AdminPage />} />
+                <Route path="*" element={<Navigate to="/register" replace />} />
+              </Routes>
+            </Suspense>
           </Layout>
         </NavigationManager>
       </Router>

@@ -33,6 +33,7 @@ wheels/
 # Environment
 .env
 .env.local
+.env.railway.*
 config.ini.local
 
 # Logs
@@ -43,9 +44,6 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
-
-# Docker
-.dockerignore
 
 # OS
 .DS_Store

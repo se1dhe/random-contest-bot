@@ -6,8 +6,8 @@ services:
       POSTGRES_DB: contest_bot
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      TZ: Europe/Kiev
-      PGTZ: Europe/Kiev
+      TZ: Europe/Kyiv
+      PGTZ: Europe/Kyiv
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -24,7 +24,7 @@ services:
     image: redis:7-alpine
     container_name: contest_bot_redis
     environment:
-      - TZ=Europe/Kiev
+      - TZ=Europe/Kyiv
     command: redis-server --notify-keyspace-events Ex
     ports:
       - "6379:6379"
@@ -47,7 +47,7 @@ services:
       - /app/__pycache__
     environment:
       - PYTHONPATH=/app
-      - TZ=Europe/Kiev
+      - TZ=Europe/Kyiv
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,7 +69,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - WEBAPP_URL=http://web:8000
-      - TZ=Europe/Kiev
+      - TZ=Europe/Kyiv
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +83,7 @@ services:
     image: ngrok/ngrok:latest
     container_name: contest_bot_ngrok
     environment:
-      - TZ=Europe/Kiev
+      - TZ=Europe/Kyiv
     command: 
       - "start"
       - "--all"
@@ -106,4 +106,3 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-

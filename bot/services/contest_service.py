@@ -27,12 +27,19 @@ class ContestService:
         channel_id: int,
         end_date: datetime,
         prize_count: int,
+        message_thread_id: Optional[int] = None,
+        language: str = "ru",
         draw_method: ContestDrawMethod = ContestDrawMethod.RANDOM,
         description: Optional[str] = None,
         youtube_channel_id: Optional[str] = None,
         youtube_subscription_days_required: int = 0,
+        twitch_channel_id: Optional[str] = None,
+        twitch_follow_days_required: int = 0,
+        kick_channel_id: Optional[str] = None,
+        kick_follow_days_required: int = 0,
         image_path: Optional[str] = None,
-        post_to_sponsors: bool = False
+        post_to_sponsors: bool = False,
+        publish_at: Optional[datetime] = None
     ) -> Contest:
         """
         Создать новый конкурс
@@ -50,16 +57,23 @@ class ContestService:
         """
         contest = Contest(
             title=title,
+            language=language,
             channel_id=channel_id,
+            message_thread_id=message_thread_id,
             end_date=end_date,
             prize_count=prize_count,
             draw_method=draw_method,
             description=description,
             youtube_channel_id=youtube_channel_id,
             youtube_subscription_days_required=youtube_subscription_days_required,
+            twitch_channel_id=twitch_channel_id,
+            twitch_follow_days_required=twitch_follow_days_required,
+            kick_channel_id=kick_channel_id,
+            kick_follow_days_required=kick_follow_days_required,
             image_path=image_path,
             status=ContestStatus.DRAFT,
-            post_to_sponsors=post_to_sponsors
+            post_to_sponsors=post_to_sponsors,
+            publish_at=publish_at
         )
         self.db.add(contest)
         await self.db.commit()
@@ -110,15 +124,31 @@ class ContestService:
         contest = await self.get_contest_by_id(contest_id)
         if not contest:
             return False
+
+        if contest.status == ContestStatus.ACTIVE and contest.message_id == message_id:
+            return True
         
         contest.status = ContestStatus.ACTIVE
         contest.message_id = message_id
+        contest.publish_at = None
         await self.db.commit()
         
         # Планируем автоматическое подведение итогов через Redis
         from shared.services.redis_service import schedule_contest_finish
         await schedule_contest_finish(contest_id, contest.end_date)
         
+        return True
+
+    async def schedule_publish(self, contest_id: int, publish_at: datetime) -> bool:
+        """
+        Запланировать публикацию конкурса
+        """
+        contest = await self.get_contest_by_id(contest_id)
+        if not contest:
+            return False
+
+        contest.publish_at = publish_at
+        await self.db.commit()
         return True
     
     async def finish_contest(self, contest_id: int) -> bool:
@@ -131,6 +161,9 @@ class ContestService:
         contest = await self.get_contest_by_id(contest_id)
         if not contest:
             return False
+
+        if contest.status in (ContestStatus.FINISHED, ContestStatus.RESULTS_PUBLISHED):
+            return True
         
         contest.status = ContestStatus.FINISHED
         await self.db.commit()
@@ -147,6 +180,9 @@ class ContestService:
         contest = await self.get_contest_by_id(contest_id)
         if not contest:
             return False
+
+        if contest.status == ContestStatus.RESULTS_PUBLISHED and contest.results_message_id == results_message_id:
+            return True
         
         contest.status = ContestStatus.RESULTS_PUBLISHED
         contest.results_message_id = results_message_id
@@ -192,4 +228,3 @@ class ContestService:
         await self.db.delete(contest)
         await self.db.commit()
         return True
-

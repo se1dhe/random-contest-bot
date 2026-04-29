@@ -1,10 +1,11 @@
 """
-Модуль для загрузки конфигурации из config.ini
+Модуль для загрузки конфигурации из config.ini и переменных окружения.
 """
 import configparser
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 
 class Config:
@@ -33,6 +34,10 @@ class Config:
         @param default значение по умолчанию
         @return значение из конфигурации
         """
+        env_value = os.getenv(key) or os.getenv(f"{section.upper()}_{key}")
+        if env_value is not None:
+            return env_value
+
         try:
             return self.config.get(section, key)
         except (configparser.NoSectionError, configparser.NoOptionError):
@@ -72,6 +77,48 @@ class Config:
     def admin_id(self) -> int:
         """ID администратора"""
         return self.get_int('telegram', 'ADMIN_ID')
+
+    @property
+    def admin_ids(self) -> set[int]:
+        """ID администраторов."""
+        raw_value = os.getenv("ADMIN_IDS") or os.getenv("TELEGRAM_ADMIN_IDS") or ""
+        ids: set[int] = set()
+
+        if raw_value:
+            for item in raw_value.replace(";", ",").split(","):
+                item = item.strip()
+                if not item:
+                    continue
+                ids.add(int(item))
+
+        try:
+            ids.add(self.admin_id)
+        except Exception:
+            pass
+
+        return ids
+
+    def is_admin(self, user_id: Optional[int]) -> bool:
+        """Проверить, входит ли пользователь в список администраторов."""
+        if user_id is None:
+            return False
+        return int(user_id) in self.admin_ids
+
+    @property
+    def telegram_mini_app_name(self) -> Optional[str]:
+        """Short name отдельного Telegram Mini App, если он настроен в BotFather."""
+        value = os.getenv("TELEGRAM_MINI_APP_NAME") or os.getenv("MINI_APP_SHORT_NAME") or ""
+        value = value.strip().strip("/")
+        return value or None
+
+    def build_mini_app_link(self, bot_username: str, start_param: Optional[str] = None) -> str:
+        """Собрать direct link Mini App для открытия из любого чата."""
+        base = f"https://t.me/{bot_username}"
+        if self.telegram_mini_app_name:
+            base = f"{base}/{self.telegram_mini_app_name}"
+        if start_param:
+            return f"{base}?startapp={quote(start_param, safe='')}"
+        return f"{base}?startapp"
     
     @property
     def db_host(self) -> str:
@@ -97,6 +144,21 @@ class Config:
     def db_password(self) -> str:
         """Пароль базы данных"""
         return self.get('database', 'DB_PASSWORD')
+
+    @property
+    def database_url(self) -> str:
+        """URL подключения к PostgreSQL для SQLAlchemy asyncpg"""
+        value = os.getenv("DATABASE_URL")
+        if value:
+            if value.startswith("postgres://"):
+                value = value.replace("postgres://", "postgresql://", 1)
+            if value.startswith("postgresql://"):
+                value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return value
+        return (
+            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
     
     @property
     def redis_host(self) -> str:
@@ -118,6 +180,16 @@ class Config:
     def redis_db(self) -> int:
         """Номер БД Redis"""
         return self.get_int('redis', 'REDIS_DB', 0)
+
+    @property
+    def redis_url(self) -> str:
+        """URL подключения к Redis"""
+        value = os.getenv("REDIS_URL")
+        if value:
+            return value
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
     
     @property
     def ngrok_enabled(self) -> bool:
@@ -183,7 +255,70 @@ class Config:
         client_secret = self.get('youtube', 'CLIENT_SECRET', '')
         return client_secret if client_secret else None
 
+    @property
+    def twitch_enabled(self) -> bool:
+        """Включена ли OAuth интеграция Twitch"""
+        return self.get_bool('twitch', 'ENABLED', False)
+
+    @property
+    def twitch_client_id(self) -> Optional[str]:
+        """OAuth 2.0 Client ID для Twitch"""
+        value = self.get('twitch', 'CLIENT_ID', '')
+        return value if value else None
+
+    @property
+    def twitch_client_secret(self) -> Optional[str]:
+        """OAuth 2.0 Client Secret для Twitch"""
+        value = self.get('twitch', 'CLIENT_SECRET', '')
+        return value if value else None
+
+    @property
+    def twitch_scopes(self) -> str:
+        """OAuth scopes для Twitch"""
+        return self.get('twitch', 'SCOPES', 'user:read:email user:read:follows')
+
+    @property
+    def kick_enabled(self) -> bool:
+        """Включена ли OAuth интеграция Kick"""
+        return self.get_bool('kick', 'ENABLED', False)
+
+    @property
+    def kick_client_id(self) -> Optional[str]:
+        """OAuth Client ID для Kick"""
+        value = self.get('kick', 'CLIENT_ID', '')
+        return value if value else None
+
+    @property
+    def kick_client_secret(self) -> Optional[str]:
+        """OAuth Client Secret для Kick"""
+        value = self.get('kick', 'CLIENT_SECRET', '')
+        return value if value else None
+
+    @property
+    def kick_scopes(self) -> str:
+        """OAuth scopes для Kick"""
+        return self.get('kick', 'SCOPES', 'user:read')
+
+    @property
+    def kick_authorize_url(self) -> str:
+        """OAuth authorize endpoint для Kick"""
+        return self.get('kick', 'AUTHORIZE_URL', 'https://id.kick.com/oauth/authorize')
+
+    @property
+    def kick_token_url(self) -> str:
+        """OAuth token endpoint для Kick"""
+        return self.get('kick', 'TOKEN_URL', 'https://id.kick.com/oauth/token')
+
+    @property
+    def kick_userinfo_url(self) -> str:
+        """OAuth userinfo endpoint для Kick"""
+        return self.get('kick', 'USERINFO_URL', 'https://api.kick.com/public/v1/users')
+
+    @property
+    def kick_following_url(self) -> str:
+        """Kick API endpoint списка подписок пользователя"""
+        return self.get('kick', 'FOLLOWING_URL', 'https://api.kick.com/public/v1/users/{user_id}/following')
+
 
 # Глобальный экземпляр конфигурации
 config = Config()
-

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTelegram } from '../hooks/useTelegram';
@@ -12,28 +12,52 @@ import {
     Trophy,
     Users,
     ChevronRight,
-    TrendingUp,
     ArrowLeft,
     Send,
     CheckCircle2,
     Clock,
     Youtube,
+    Gamepad2,
     Trash2,
     RefreshCw,
     AlertCircle
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { ContestForm } from '../components/ContestForm';
+
+const GrowthChart = lazy(() =>
+    import('../components/admin/GrowthChart').then((module) => ({ default: module.GrowthChart }))
+);
+const ContestForm = lazy(() =>
+    import('../components/ContestForm').then((module) => ({ default: module.ContestForm }))
+);
+const ArchiveTab = lazy(() =>
+    import('../components/admin/ArchiveTab').then((module) => ({ default: module.ArchiveTab }))
+);
+const JournalTab = lazy(() =>
+    import('../components/admin/JournalTab').then((module) => ({ default: module.JournalTab }))
+);
+const DashboardQuickPanels = lazy(() =>
+    import('../components/admin/DashboardQuickPanels').then((module) => ({ default: module.DashboardQuickPanels }))
+);
+const DashboardStatsGrid = lazy(() =>
+    import('../components/admin/DashboardStatsGrid').then((module) => ({ default: module.DashboardStatsGrid }))
+);
+const SystemHealthPanel = lazy(() =>
+    import('../components/admin/SystemHealthPanel').then((module) => ({ default: module.SystemHealthPanel }))
+);
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+type AdminTab = 'dash' | 'contests' | 'archive' | 'journal' | 'channels';
+const ADMIN_PREFERENCES_STORAGE_KEY = 'admin_page_preferences_v1';
+
 export const AdminPage: React.FC = () => {
     const { initData, hapticFeedback } = useTelegram();
-    const [activeTab, setActiveTab] = useState<'dash' | 'contests' | 'channels'>('dash');
+    const queryClient = useQueryClient();
+    const [activeTab, setActiveTab] = useState<AdminTab>('dash');
     const [isCreating, setIsCreating] = useState(false);
     interface AdminContest {
         id: number;
@@ -42,10 +66,60 @@ export const AdminPage: React.FC = () => {
         prize_count: number;
         participants_count?: number;
         end_date: string;
+        publish_at?: string | null;
         prizes?: Array<{ id?: number; place: number; title?: string; description?: string }>;
-        channel?: { channel_title?: string };
+        channel?: { channel_title?: string; channel_username?: string | null };
         require_youtube_subscription?: boolean;
         youtube_subscription_days_required?: number;
+        require_twitch_follow?: boolean;
+        twitch_follow_days_required?: number;
+        require_kick_follow?: boolean;
+        kick_follow_days_required?: number;
+    }
+    interface ContestPreview {
+        contest_id: number;
+        title: string;
+        status: string;
+        scheduled_for?: string | null;
+        text: string;
+        button_url?: string | null;
+        has_image: boolean;
+    }
+    interface ResultsPreview {
+        contest_id: number;
+        title: string;
+        status: string;
+        text: string;
+        button_url?: string | null;
+        winners: Array<{
+            place: number;
+            title: string;
+            winner_user_id?: number | null;
+            winner_username?: string | null;
+            winner_firstname?: string | null;
+        }>;
+    }
+    interface RepublishDiff {
+        contest_id: number;
+        title: string;
+        previous_text: string;
+        current_text: string;
+        button_url?: string | null;
+        diff: string;
+        has_changes: boolean;
+        has_baseline?: boolean;
+    }
+    interface AdminHistoryItem {
+        id: number;
+        created_at: string;
+        actor_user_id: number;
+        action_type: string;
+        target_type?: string | null;
+        target_id?: string | null;
+        status: string;
+        contest_title?: string | null;
+        message?: string | null;
+        payload?: Record<string, unknown> | null;
     }
     interface AdminChannel {
         channel_id: number;
@@ -53,6 +127,11 @@ export const AdminPage: React.FC = () => {
         channel_username?: string | null;
     }
     interface AdminYoutubeChannel {
+        channel_id: string;
+        title: string;
+        description?: string;
+    }
+    interface AdminKickChannel {
         channel_id: string;
         title: string;
         description?: string;
@@ -67,17 +146,261 @@ export const AdminPage: React.FC = () => {
         date: string;
         participants: number;
     }
+    interface HealthService {
+        status: 'ok' | 'warning' | 'error' | 'disabled';
+        detail: string;
+        public_url?: string | null;
+        configured_domain?: string | null;
+    }
+    interface AnalyticsHealth {
+        generated_at: string;
+        services: {
+            database: HealthService;
+            redis: HealthService;
+            bot_api: HealthService;
+            ngrok: HealthService;
+        };
+        issues: {
+            active_without_message_id: number;
+            results_without_message_id: number;
+            overdue_scheduled: number;
+            finished_without_winners: number;
+            total: number;
+        };
+        problematic_contests: Array<{
+            contest_id: number;
+            title: string;
+            status: string;
+            channel_title?: string | null;
+            issue_type: string;
+            detail: string;
+            actionability: 'auto_repairable' | 'manual_attention';
+        }>;
+    }
+    interface PaginatedContestsResponse {
+        items: AdminContest[];
+        total: number;
+        limit: number;
+        offset: number;
+    }
     const [selectedContest, setSelectedContest] = useState<AdminContest | null>(null);
-    const [isPublishing, setIsPublishing] = useState(false);
+    const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
 
     // Channel adding state
-    const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | null>(null);
+    const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | 'kick' | null>(null);
     const [newChannelInput, setNewChannelInput] = useState('');
     const [isAddingChannel, setIsAddingChannel] = useState(false);
     const [activeChannelId, setActiveChannelId] = useState<number | string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [scheduleAt, setScheduleAt] = useState('');
+    const [preview, setPreview] = useState<ContestPreview | null>(null);
+    const [resultsPreview, setResultsPreview] = useState<ResultsPreview | null>(null);
+    const [republishDiff, setRepublishDiff] = useState<RepublishDiff | null>(null);
+    const [contestSearch, setContestSearch] = useState('');
+    const [contestFilter, setContestFilter] = useState<'all' | 'scheduled' | 'active' | 'draft' | 'finished' | 'results_published'>('all');
+    const [contestPage, setContestPage] = useState(1);
+    const [actionSearch, setActionSearch] = useState('');
+    const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'kick_channel'>('all');
+    const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const contestPageSize = 20;
+
+    const actionKey = (action: string, contestId?: number | string) =>
+        contestId !== undefined ? `${action}:${contestId}` : action;
+
+    const isActionLoading = (action: string, contestId?: number | string) =>
+        actionLoadingKey === actionKey(action, contestId);
+
+    const extractErrorMessage = (err: unknown, fallback: string) =>
+        (err as { response?: { data?: { detail?: string } } }).response?.data?.detail || fallback;
+
+    const formatBulkSkippedSummary = (skipped: Array<{ contest_id?: number; reason?: string }> = []) => {
+        if (!skipped.length) {
+            return 'без пропусков';
+        }
+
+        const reasonLabel = (reason?: string) => {
+            if (!reason) return 'неизвестная причина';
+            if (reason === 'not_found') return 'не найден';
+            if (reason === 'publish_failed') return 'ошибка публикации';
+            if (reason === 'schedule_not_set') return 'нет отложенной публикации';
+            if (reason.startsWith('invalid_status:')) {
+                const status = reason.split(':')[1] || 'unknown';
+                return `статус ${status}`;
+            }
+            return reason;
+        };
+
+        const grouped = skipped.reduce<Record<string, number>>((acc, item) => {
+            const label = reasonLabel(item.reason);
+            acc[label] = (acc[label] || 0) + 1;
+            return acc;
+        }, {});
+
+        return Object.entries(grouped)
+            .map(([label, count]) => `${label}: ${count}`)
+            .join(', ');
+    };
+
+    const effectiveStatus = (contest: AdminContest) =>
+        contest.status === 'draft' && contest.publish_at ? 'scheduled' : contest.status;
+
+    const contestStatusPriority = (contest: AdminContest) => {
+        const status = effectiveStatus(contest);
+        switch (status) {
+            case 'scheduled':
+                return 0;
+            case 'active':
+                return 1;
+            case 'draft':
+                return 2;
+            case 'finished':
+                return 3;
+            case 'results_published':
+                return 4;
+            default:
+                return 5;
+        }
+    };
+
+    const historyActionLabels: Record<string, string> = {
+        contest_created: 'Конкурс создан',
+        contest_deleted: 'Конкурс удален',
+        contest_drawn: 'Розыгрыш проведен',
+        contest_published: 'Конкурс опубликован',
+        contest_results_published: 'Результаты опубликованы',
+        contest_publish_scheduled: 'Публикация запланирована',
+        contest_publish_schedule_canceled: 'Отложенная публикация отменена',
+        contest_republished: 'Конкурс перепубликован',
+        contest_duplicated: 'Создана копия конкурса',
+        contest_post_edited: 'Пост конкурса обновлен',
+        contest_repaired: 'Конкурс восстановлен',
+        contest_participants_exported: 'Выгружен CSV участников',
+        channel_created: 'Telegram-канал добавлен',
+        channel_updated: 'Telegram-канал обновлен',
+        channel_deleted: 'Telegram-канал удален',
+        channel_reactivated: 'Telegram-канал восстановлен',
+        youtube_channel_created: 'YouTube-канал добавлен',
+        youtube_channel_deleted: 'YouTube-канал удален',
+        kick_channel_created: 'Kick-канал добавлен',
+        kick_channel_deleted: 'Kick-канал удален',
+    };
+
+    const formatHistoryDetails = (entry: AdminHistoryItem) => {
+        const payload = entry.payload || {};
+
+        if (entry.message) {
+            return entry.message;
+        }
+
+        switch (entry.action_type) {
+            case 'contest_created':
+                return payload.title ? `Название: ${String(payload.title)}` : 'Создан новый конкурс';
+            case 'contest_publish_scheduled':
+                return payload.publish_at ? `Время публикации: ${new Date(String(payload.publish_at)).toLocaleString()}` : 'Публикация поставлена в очередь';
+            case 'contest_drawn':
+                return Array.isArray(payload.winners) ? `Определено победителей: ${payload.winners.length}` : 'Победители определены';
+            case 'contest_participants_exported':
+                return payload.participants_count !== undefined ? `Участников в выгрузке: ${String(payload.participants_count)}` : 'Участники экспортированы';
+            case 'contest_republished':
+                return 'Создана новая публикация конкурса в канале';
+            case 'contest_duplicated':
+                return payload.source_title ? `Копия конкурса: ${String(payload.source_title)}` : 'Создан новый конкурс из шаблона';
+            case 'contest_post_edited':
+                return 'Обновлен уже опубликованный пост конкурса';
+            default:
+                return null;
+        }
+    };
+
+    useEffect(() => {
+        setScheduleAt(selectedContest?.publish_at ? selectedContest.publish_at.slice(0, 16) : '');
+        setPreview(null);
+        setResultsPreview(null);
+        setRepublishDiff(null);
+    }, [selectedContest?.id, selectedContest?.publish_at]);
+
+    useEffect(() => {
+        setContestPage(1);
+    }, [contestSearch, contestFilter]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        try {
+            const raw = window.localStorage.getItem(ADMIN_PREFERENCES_STORAGE_KEY);
+            if (!raw) {
+                return;
+            }
+            const parsed = JSON.parse(raw) as {
+                tab?: AdminTab;
+                contestFilter?: typeof contestFilter;
+                actionFilter?: typeof actionFilter;
+                contestSearch?: string;
+                contestPage?: number;
+                actionSearch?: string;
+                growthDays?: number;
+            };
+
+            if (parsed.tab && ['dash', 'contests', 'archive', 'journal', 'channels'].includes(parsed.tab)) {
+                setActiveTab(parsed.tab);
+            }
+            if (parsed.contestFilter && ['all', 'scheduled', 'active', 'draft', 'finished', 'results_published'].includes(parsed.contestFilter)) {
+                setContestFilter(parsed.contestFilter);
+            }
+            if (parsed.actionFilter && ['all', 'contest', 'channel', 'youtube_channel', 'kick_channel'].includes(parsed.actionFilter)) {
+                setActionFilter(parsed.actionFilter);
+            }
+            if (typeof parsed.contestSearch === 'string') {
+                setContestSearch(parsed.contestSearch);
+            }
+            if (typeof parsed.contestPage === 'number' && parsed.contestPage > 0) {
+                setContestPage(parsed.contestPage);
+            }
+            if (typeof parsed.actionSearch === 'string') {
+                setActionSearch(parsed.actionSearch);
+            }
+            if (parsed.growthDays === 7 || parsed.growthDays === 30 || parsed.growthDays === 90) {
+                setGrowthDays(parsed.growthDays);
+            }
+        } catch (storageError) {
+            console.warn('Failed to restore admin preferences', storageError);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        try {
+            window.localStorage.setItem(
+                ADMIN_PREFERENCES_STORAGE_KEY,
+                JSON.stringify({
+                    tab: activeTab,
+                    contestFilter,
+                    actionFilter,
+                    contestSearch,
+                    contestPage,
+                    actionSearch,
+                    growthDays,
+                })
+            );
+        } catch (storageError) {
+            console.warn('Failed to save admin preferences', storageError);
+        }
+    }, [activeTab, contestFilter, actionFilter, contestSearch, contestPage, actionSearch, growthDays]);
+
+    const refreshContestDetails = async (contestId?: number) => {
+        await refetchContests();
+        await queryClient.invalidateQueries({ queryKey: ['admin_contests_paged', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['contest_history', contestId, initData] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_analytics', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_analytics_growth', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
+    };
 
     const { data: contests, isLoading: isContestsLoading, refetch: refetchContests } = useQuery<AdminContest[]>({
         queryKey: ['admin_contests', initData],
@@ -91,6 +414,64 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData,
     });
 
+    const { data: pagedContests, isLoading: isPagedContestsLoading, refetch: refetchPagedContests } = useQuery<PaginatedContestsResponse>({
+        queryKey: ['admin_contests_paged', initData, contestSearch, contestFilter, contestPage],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/contests', {
+                headers: { '_auth': initData },
+                params: {
+                    _auth: initData,
+                    paginated: true,
+                    limit: contestPageSize,
+                    offset: (contestPage - 1) * contestPageSize,
+                    status: contestFilter === 'all' ? undefined : contestFilter,
+                    search: contestSearch.trim() || undefined,
+                }
+            });
+            return res.data;
+        },
+        enabled: !!initData && activeTab === 'contests',
+    });
+
+    const scheduledContests = (contests || []).filter(contest => effectiveStatus(contest) === 'scheduled');
+    const draftContests = (contests || []).filter(contest => effectiveStatus(contest) === 'draft');
+    const activeContests = (contests || []).filter(contest => effectiveStatus(contest) === 'active');
+    const archivedContests = (contests || []).filter((contest) => {
+        const status = effectiveStatus(contest);
+        return status === 'finished' || status === 'results_published';
+    });
+    const sortedContests = [...(contests || [])].sort((left, right) => {
+        const priorityDiff = contestStatusPriority(left) - contestStatusPriority(right);
+        if (priorityDiff !== 0) {
+            return priorityDiff;
+        }
+
+        const leftDate = left.publish_at || left.end_date;
+        const rightDate = right.publish_at || right.end_date;
+        return new Date(leftDate).getTime() - new Date(rightDate).getTime();
+    });
+    const filteredContests = sortedContests.filter((contest) => {
+        const statusMatches = contestFilter === 'all' || effectiveStatus(contest) === contestFilter;
+        const searchValue = contestSearch.trim().toLowerCase();
+        if (!searchValue) {
+            return statusMatches;
+        }
+
+        const haystack = [
+            contest.title,
+            contest.channel?.channel_title || '',
+            contest.channel?.channel_username || '',
+        ].join(' ').toLowerCase();
+
+        return statusMatches && haystack.includes(searchValue);
+    });
+    const contestsList = activeTab === 'contests'
+        ? (pagedContests?.items || [])
+        : filteredContests;
+    const contestsTotal = activeTab === 'contests'
+        ? (pagedContests?.total || 0)
+        : filteredContests.length;
+    const contestsTotalPages = Math.max(1, Math.ceil(contestsTotal / contestPageSize));
     const { data: channels, refetch: refetchChannels } = useQuery<AdminChannel[]>({
         queryKey: ['admin_channels', initData],
         queryFn: async () => {
@@ -115,6 +496,18 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData,
     });
 
+    const { data: kickChannels, refetch: refetchKickChannels } = useQuery<AdminKickChannel[]>({
+        queryKey: ['admin_kick_channels', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/kick-channels', {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!initData,
+    });
+
     const { data: analytics, refetch: refetchAnalytics } = useQuery<AnalyticsOverview>({
         queryKey: ['admin_analytics', initData],
         queryFn: async () => {
@@ -128,9 +521,21 @@ export const AdminPage: React.FC = () => {
     });
 
     const { data: analyticsGrowth, refetch: refetchGrowth } = useQuery<GrowthPoint[]>({
-        queryKey: ['admin_analytics_growth', initData],
+        queryKey: ['admin_analytics_growth', initData, growthDays],
         queryFn: async () => {
             const res = await axios.get('/api/admin/analytics/growth', {
+                headers: { '_auth': initData },
+                params: { _auth: initData, days: growthDays }
+            });
+            return res.data;
+        },
+        enabled: !!initData
+    });
+
+    const { data: analyticsHealth, refetch: refetchHealth } = useQuery<AnalyticsHealth>({
+        queryKey: ['admin_analytics_health', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/analytics/health', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -139,50 +544,291 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData
     });
 
-    const handleTabChange = (tab: 'dash' | 'contests' | 'channels') => {
+    const { data: recentActions } = useQuery<AdminHistoryItem[]>({
+        queryKey: ['admin_recent_actions', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/actions/recent', {
+                headers: { '_auth': initData },
+                params: { _auth: initData, limit: 25 }
+            });
+            return res.data;
+        },
+        enabled: !!initData,
+    });
+
+    const filteredRecentActions = (recentActions || []).filter((entry) => {
+        const targetMatches = actionFilter === 'all' || entry.target_type === actionFilter;
+        const searchValue = actionSearch.trim().toLowerCase();
+        if (!searchValue) {
+            return targetMatches;
+        }
+
+        const haystack = [
+            historyActionLabels[entry.action_type] || entry.action_type,
+            entry.contest_title || '',
+            entry.message || '',
+            entry.target_type || '',
+            entry.target_id || '',
+            formatHistoryDetails(entry) || '',
+        ].join(' ').toLowerCase();
+
+        return targetMatches && haystack.includes(searchValue);
+    });
+
+    useEffect(() => {
+        if (!selectedContest || !contests) {
+            return;
+        }
+
+        const updatedContest = contests.find(contest => contest.id === selectedContest.id);
+        if (!updatedContest) {
+            setSelectedContest(null);
+            return;
+        }
+
+        if (
+            updatedContest.status !== selectedContest.status ||
+            updatedContest.publish_at !== selectedContest.publish_at ||
+            updatedContest.participants_count !== selectedContest.participants_count ||
+            updatedContest.end_date !== selectedContest.end_date
+        ) {
+            setSelectedContest(updatedContest);
+        }
+    }, [contests, selectedContest]);
+
+    const handleTabChange = (tab: AdminTab) => {
         hapticFeedback('light');
         setActiveTab(tab);
         setIsCreating(false);
         setSelectedContest(null);
+        setError(null);
+        setSuccessMessage(null);
+    };
+
+    const openContestsWithFilter = (filter: typeof contestFilter) => {
+        handleTabChange('contests');
+        setContestFilter(filter);
     };
 
     const handleCreateSuccess = () => {
         setIsCreating(false);
+        setSuccessMessage('Конкурс создан');
         refetchContests();
     };
 
     const handleRefreshAll = () => {
         hapticFeedback('medium');
         refetchContests();
+        if (activeTab === 'contests') {
+            refetchPagedContests();
+        }
         refetchChannels();
         refetchYoutubeChannels();
+        refetchKickChannels();
         refetchAnalytics();
         refetchGrowth();
+        refetchHealth();
+        queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
         setIsSettingsOpen(false);
         hapticFeedback('heavy');
     };
 
+    const handleOpenContestById = (contestId: number) => {
+        const contest = (contests || []).find(item => item.id === contestId);
+        if (!contest) {
+            setError('Этот конкурс уже недоступен в текущем списке');
+            setSuccessMessage(null);
+            return;
+        }
+
+        setSelectedContest(contest);
+        setError(null);
+        setSuccessMessage(null);
+    };
+
     const handlePublish = async (contestId: number) => {
-        setIsPublishing(true);
+        setActionLoadingKey(actionKey('publish', contestId));
+        setError(null);
+        setSuccessMessage(null);
         hapticFeedback('medium');
         try {
             await axios.post(`/api/publish/contest/${contestId}`, {}, {
                 params: { _auth: initData }
             });
             hapticFeedback('heavy');
+            setSuccessMessage('Конкурс опубликован');
             setSelectedContest(null);
-            refetchContests();
-        } catch (err) {
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
             console.error('Failed to publish', err);
             hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Ошибка при публикации конкурса'));
         } finally {
-            setIsPublishing(false);
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleSchedulePublish = async (contestId: number) => {
+        if (!scheduleAt) return;
+        setActionLoadingKey(actionKey('schedule', contestId));
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            await axios.post(`/api/admin/contests/${contestId}/schedule-publish`, {
+                publish_at: scheduleAt
+            }, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            setSuccessMessage('Публикация запланирована');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to schedule publish', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось запланировать публикацию'));
+        } finally {
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleCancelSchedulePublish = async (contestId: number) => {
+        setActionLoadingKey(actionKey('cancelSchedule', contestId));
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            await axios.post(`/api/admin/contests/${contestId}/cancel-schedule-publish`, {}, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            setSuccessMessage('Отложенная публикация отменена');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to cancel scheduled publish', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось отменить отложенную публикацию'));
+        } finally {
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleRepublish = async (contestId: number, mode: 'repost' | 'edit') => {
+        setActionLoadingKey(actionKey(mode === 'edit' ? 'editPost' : 'repost', contestId));
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            await axios.post(`/api/admin/contests/${contestId}/republish`, { mode }, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            setSuccessMessage(mode === 'edit' ? 'Пост обновлен' : 'Конкурс перепубликован');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to republish contest', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось выполнить операцию перепубликации'));
+        } finally {
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleExportParticipants = async (contestId: number) => {
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            const response = await axios.get(`/api/admin/contests/${contestId}/participants/export`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData },
+                responseType: 'blob'
+            });
+            const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `contest_${contestId}_participants.csv`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            setSuccessMessage('CSV с участниками выгружен');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to export participants', err);
+            setError(extractErrorMessage(err, 'Не удалось выгрузить участников'));
+        }
+    };
+
+    const handleLoadPreview = async (contestId: number) => {
+        setError(null);
+        try {
+            const res = await axios.get(`/api/admin/contests/${contestId}/preview`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            setPreview(res.data);
+            setResultsPreview(null);
+            setRepublishDiff(null);
+        } catch (err: unknown) {
+            setError(extractErrorMessage(err, 'Не удалось загрузить предпросмотр'));
+        }
+    };
+
+    const handleLoadResultsPreview = async (contestId: number) => {
+        setError(null);
+        try {
+            const res = await axios.get(`/api/admin/contests/${contestId}/results-preview`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            setResultsPreview(res.data);
+            setPreview(null);
+            setRepublishDiff(null);
+        } catch (err: unknown) {
+            setError(extractErrorMessage(err, 'Не удалось загрузить черновик результатов'));
+        }
+    };
+
+    const handleLoadRepublishDiff = async (contestId: number) => {
+        setError(null);
+        try {
+            const res = await axios.get(`/api/admin/contests/${contestId}/republish-diff`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            setRepublishDiff(res.data);
+            setPreview(null);
+            setResultsPreview(null);
+        } catch (err: unknown) {
+            setError(extractErrorMessage(err, 'Не удалось загрузить diff перепубликации'));
+        }
+    };
+
+    const handlePublishResults = async (contestId: number) => {
+        setActionLoadingKey(actionKey('publishResults', contestId));
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            await axios.post(`/api/publish/results/${contestId}`, {}, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            setSuccessMessage('Результаты опубликованы');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to publish results', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось опубликовать результаты'));
+        } finally {
+            setActionLoadingKey(null);
         }
     };
 
     const handleRunContest = async (contestId: number) => {
         if (!confirm('Вы уверены, что хотите завершить конкурс и провести розыгрыш сейчас?')) return;
-        setIsPublishing(true);
+        setActionLoadingKey(actionKey('draw', contestId));
         hapticFeedback('medium');
         try {
             await axios.post(`/api/admin/contests/${contestId}/draw`, {}, {
@@ -190,21 +836,21 @@ export const AdminPage: React.FC = () => {
                 params: { _auth: initData }
             });
             hapticFeedback('heavy');
-            setSelectedContest(null);
-            refetchContests();
+            setSuccessMessage('Розыгрыш проведен, проверьте черновик результатов');
+            await refreshContestDetails(contestId);
         } catch (err: unknown) {
             console.error('Failed to run contest', err);
             hapticFeedback('rigid');
             const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
             setError(detail || 'Ошибка при проведении розыгрыша');
         } finally {
-            setIsPublishing(false);
+            setActionLoadingKey(null);
         }
     };
 
     const handleDeleteContest = async (contestId: number) => {
         if (!confirm('Вы уверены, что хотите удалить этот конкурс? Это действие необратимо.')) return;
-        setIsPublishing(true);
+        setActionLoadingKey(actionKey('delete', contestId));
         hapticFeedback('medium');
         try {
             await axios.delete(`/api/admin/contests/${contestId}`, {
@@ -213,14 +859,136 @@ export const AdminPage: React.FC = () => {
             });
             hapticFeedback('heavy');
             setSelectedContest(null);
-            refetchContests();
+            setSuccessMessage('Конкурс удален');
+            await refreshContestDetails(contestId);
         } catch (err: unknown) {
             console.error('Failed to delete contest', err);
             hapticFeedback('rigid');
             const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
             setError(detail || 'Ошибка при удалении конкурса');
         } finally {
-            setIsPublishing(false);
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleRepairContest = async (contestId: number) => {
+        setActionLoadingKey(actionKey('repair', contestId));
+        setError(null);
+        setSuccessMessage(null);
+        hapticFeedback('medium');
+        try {
+            const res = await axios.post(`/api/admin/contests/${contestId}/repair`, {}, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            setSuccessMessage(res.data?.message || 'Восстановление выполнено');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to repair contest', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось восстановить конкурс'));
+        } finally {
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleDuplicateContest = async (contestId: number) => {
+        setActionLoadingKey(actionKey('duplicate', contestId));
+        setError(null);
+        setSuccessMessage(null);
+        hapticFeedback('medium');
+        try {
+            const response = await axios.post(`/api/admin/contests/${contestId}/duplicate`, {}, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            const duplicatedId = response.data?.contest?.id;
+            setSuccessMessage(duplicatedId
+                ? `Создана копия конкурса (ID: ${duplicatedId})`
+                : 'Создана копия конкурса');
+            setSelectedContest(null);
+            openContestsWithFilter('draft');
+            await refreshContestDetails(contestId);
+        } catch (err: unknown) {
+            console.error('Failed to duplicate contest', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось создать копию конкурса'));
+        } finally {
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleBulkPublishNow = async () => {
+        const ids = scheduledContests.map((contest) => contest.id);
+        if (!ids.length) {
+            setError('Нет запланированных конкурсов для публикации');
+            return;
+        }
+        if (!confirm(`Опубликовать сейчас ${ids.length} запланированных конкурсов?`)) return;
+
+        setActionLoadingKey(actionKey('bulkPublishScheduled'));
+        setError(null);
+        setSuccessMessage(null);
+        hapticFeedback('medium');
+        try {
+            const res = await axios.post('/api/admin/contests/bulk/publish-now', {
+                contest_ids: ids
+            }, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            const publishedCount = Number(res.data?.published_count || 0);
+            const skipped = Array.isArray(res.data?.skipped) ? res.data.skipped : [];
+            const skippedCount = skipped.length;
+            setSuccessMessage(
+                `Массовая публикация: успешно ${publishedCount}, пропущено ${skippedCount} (${formatBulkSkippedSummary(skipped)})`
+            );
+            await refreshContestDetails();
+        } catch (err: unknown) {
+            console.error('Failed bulk publish', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось выполнить массовую публикацию'));
+        } finally {
+            setActionLoadingKey(null);
+        }
+    };
+
+    const handleBulkCancelSchedule = async () => {
+        const ids = scheduledContests.map((contest) => contest.id);
+        if (!ids.length) {
+            setError('Нет запланированных конкурсов для отмены');
+            return;
+        }
+        if (!confirm(`Отменить отложенную публикацию для ${ids.length} конкурсов?`)) return;
+
+        setActionLoadingKey(actionKey('bulkCancelSchedule'));
+        setError(null);
+        setSuccessMessage(null);
+        hapticFeedback('medium');
+        try {
+            const res = await axios.post('/api/admin/contests/bulk/cancel-schedule', {
+                contest_ids: ids
+            }, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            hapticFeedback('heavy');
+            const updatedCount = Number(res.data?.updated_count || 0);
+            const skipped = Array.isArray(res.data?.skipped) ? res.data.skipped : [];
+            const skippedCount = skipped.length;
+            setSuccessMessage(
+                `Отмена расписания: обновлено ${updatedCount}, пропущено ${skippedCount} (${formatBulkSkippedSummary(skipped)})`
+            );
+            await refreshContestDetails();
+        } catch (err: unknown) {
+            console.error('Failed bulk schedule cancel', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось выполнить массовую отмену'));
+        } finally {
+            setActionLoadingKey(null);
         }
     };
 
@@ -248,8 +1016,8 @@ export const AdminPage: React.FC = () => {
                     headers: { '_auth': initData },
                     params: { _auth: initData }
                 });
-                refetchChannels();
-            } else {
+                await refetchChannels();
+            } else if (addingChannelType === 'youtube') {
                 // YouTube
                 // Simple parsing for ID if full URL is given (very basic)
                 let channelId = newChannelInput;
@@ -265,11 +1033,38 @@ export const AdminPage: React.FC = () => {
                     headers: { '_auth': initData },
                     params: { _auth: initData }
                 });
-                refetchYoutubeChannels();
+                await refetchYoutubeChannels();
+            } else {
+                // Kick
+                let channelId = newChannelInput.trim();
+                channelId = channelId
+                    .replace('https://kick.com/', '')
+                    .replace('http://kick.com/', '')
+                    .replace('kick.com/', '')
+                    .replace(/^@/, '')
+                    .replace(/\/+$/, '')
+                    .trim();
+
+                await axios.post('/api/admin/kick-channels', {
+                    channel_id: channelId,
+                    title: channelId,
+                    description: ''
+                }, {
+                    headers: { '_auth': initData },
+                    params: { _auth: initData }
+                });
+                await refetchKickChannels();
             }
             hapticFeedback('heavy');
             setAddingChannelType(null);
             setNewChannelInput('');
+            setSuccessMessage(
+                addingChannelType === 'telegram'
+                    ? 'Telegram-канал добавлен'
+                    : addingChannelType === 'youtube'
+                        ? 'YouTube-канал добавлен'
+                        : 'Kick-канал добавлен'
+            );
         } catch (err: unknown) {
             console.error('Failed to add channel', err);
             hapticFeedback('rigid');
@@ -287,16 +1082,19 @@ export const AdminPage: React.FC = () => {
 
     const handleDeleteChannel = async (id: number) => {
         if (!confirm('Вы уверены, что хотите удалить этот канал?')) return;
+        setError(null);
         try {
             await axios.delete(`/api/admin/channels/${id}`, {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
-            refetchChannels();
+            await refetchChannels();
             hapticFeedback('heavy');
-        } catch (err) {
+            setSuccessMessage('Канал удален');
+        } catch (err: unknown) {
             console.error('Failed to delete channel', err);
             hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось удалить канал'));
         } finally {
             setActiveChannelId(null);
         }
@@ -304,16 +1102,39 @@ export const AdminPage: React.FC = () => {
 
     const handleDeleteYoutubeChannel = async (channelId: string) => {
         if (!confirm('Вы уверены, что хотите удалить этот YouTube канал?')) return;
+        setError(null);
         try {
             await axios.delete(`/api/admin/youtube-channels/${channelId}`, {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
-            refetchYoutubeChannels();
+            await refetchYoutubeChannels();
             hapticFeedback('heavy');
-        } catch (err) {
+            setSuccessMessage('YouTube-канал удален');
+        } catch (err: unknown) {
             console.error('Failed to delete YouTube channel', err);
             hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось удалить YouTube канал'));
+        } finally {
+            setActiveChannelId(null);
+        }
+    };
+
+    const handleDeleteKickChannel = async (channelId: string) => {
+        if (!confirm('Вы уверены, что хотите удалить этот Kick канал?')) return;
+        setError(null);
+        try {
+            await axios.delete(`/api/admin/kick-channels/${channelId}`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            await refetchKickChannels();
+            hapticFeedback('heavy');
+            setSuccessMessage('Kick-канал удален');
+        } catch (err: unknown) {
+            console.error('Failed to delete Kick channel', err);
+            hapticFeedback('rigid');
+            setError(extractErrorMessage(err, 'Не удалось удалить Kick канал'));
         } finally {
             setActiveChannelId(null);
         }
@@ -334,8 +1155,9 @@ export const AdminPage: React.FC = () => {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
-            refetchChannels();
+            await refetchChannels();
             hapticFeedback('heavy');
+            setSuccessMessage('Канал обновлен');
         } catch (err: unknown) {
             console.error('Failed to update channel', err);
             hapticFeedback('rigid');
@@ -351,6 +1173,18 @@ export const AdminPage: React.FC = () => {
         }
     };
 
+    const { data: contestHistory } = useQuery<AdminHistoryItem[]>({
+        queryKey: ['contest_history', selectedContest?.id, initData],
+        queryFn: async () => {
+            const res = await axios.get(`/api/admin/contests/${selectedContest?.id}/history`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!selectedContest?.id && !!initData,
+    });
+
     return (
         <div className="space-y-6 pb-20">
             <AnimatePresence mode="wait">
@@ -361,10 +1195,12 @@ export const AdminPage: React.FC = () => {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
                     >
-                        <ContestForm
-                            onSuccess={handleCreateSuccess}
-                            onCancel={() => setIsCreating(false)}
-                        />
+                        <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка формы конкурса...</div>}>
+                            <ContestForm
+                                onSuccess={handleCreateSuccess}
+                                onCancel={() => setIsCreating(false)}
+                            />
+                        </Suspense>
                     </motion.div>
                 ) : selectedContest ? (
                     <motion.div
@@ -385,15 +1221,26 @@ export const AdminPage: React.FC = () => {
                         </header>
 
                         <div className="space-y-4">
+                            {error && (
+                                <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                                    {error}
+                                </div>
+                            )}
+                            {successMessage && (
+                                <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+                                    {successMessage}
+                                </div>
+                            )}
                             <GlassCard className="p-5 space-y-4">
                                 <div className="flex justify-between items-start">
                                     <div className={cn(
                                         'text-[8px] font-black tracking-widest px-2 py-1 rounded-md uppercase',
-                                        selectedContest.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                            selectedContest.status === 'draft' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                        effectiveStatus(selectedContest) === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                            effectiveStatus(selectedContest) === 'draft' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                                effectiveStatus(selectedContest) === 'scheduled' ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20' :
                                                 'bg-white/5 text-white/20 border border-white/10'
                                     )}>
-                                        {selectedContest.status}
+                                        {effectiveStatus(selectedContest)}
                                     </div>
                                     <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
                                         ID: {selectedContest.id}
@@ -430,6 +1277,18 @@ export const AdminPage: React.FC = () => {
                                             <div className="text-sm font-bold">{new Date(selectedContest.end_date).toLocaleString()}</div>
                                         </div>
                                     </div>
+
+                                    {selectedContest.publish_at && (
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-10 h-10 bg-sky-500/10 rounded-xl flex items-center justify-center text-sky-400">
+                                                <Clock size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider leading-none mb-1">Публикация</div>
+                                                <div className="text-sm font-bold">{new Date(selectedContest.publish_at).toLocaleString()}</div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {selectedContest.require_youtube_subscription && (
@@ -440,32 +1299,153 @@ export const AdminPage: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
+                                {selectedContest.require_twitch_follow && (
+                                    <div className="pt-2">
+                                        <div className="flex items-center space-x-2 text-violet-400">
+                                            <AlertCircle size={14} />
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Twitch ({selectedContest.twitch_follow_days_required} дн.)</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {selectedContest.require_kick_follow && (
+                                    <div className="pt-2">
+                                        <div className="flex items-center space-x-2 text-emerald-400">
+                                            <AlertCircle size={14} />
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Kick ({selectedContest.kick_follow_days_required} дн.)</span>
+                                        </div>
+                                    </div>
+                                )}
                             </GlassCard>
 
-                            {selectedContest.status === 'draft' && (
+                            <Button
+                                variant="secondary"
+                                onClick={() => handleDuplicateContest(selectedContest.id)}
+                                isLoading={isActionLoading('duplicate', selectedContest.id)}
+                                className="w-full"
+                            >
+                                СОЗДАТЬ КОПИЮ КАК ЧЕРНОВИК
+                            </Button>
+
+                            {effectiveStatus(selectedContest) === 'draft' && (
                                 <div className="space-y-3">
                                     <Button
+                                        variant="secondary"
+                                        onClick={() => handleLoadPreview(selectedContest.id)}
+                                        className="w-full"
+                                    >
+                                        ПРЕДПРОСМОТР ПОСТА
+                                    </Button>
+                                    <Button
                                         onClick={() => handlePublish(selectedContest.id)}
-                                        isLoading={isPublishing}
+                                        isLoading={isActionLoading('publish', selectedContest.id)}
                                         className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
                                     >
-                                        <Send size={18} className="mr-2" /> ОПУБЛИКОВАТЬ В КАНАЛИ
+                                        <Send size={18} className="mr-2" /> ОПУБЛИКОВАТЬ В КАНАЛ
                                     </Button>
+                                    <div className="space-y-2">
+                                        <input
+                                            type="datetime-local"
+                                            className="form-input"
+                                            value={scheduleAt}
+                                            onChange={e => setScheduleAt(e.target.value)}
+                                        />
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => handleSchedulePublish(selectedContest.id)}
+                                            isLoading={isActionLoading('schedule', selectedContest.id)}
+                                            disabled={!scheduleAt}
+                                            className="w-full"
+                                        >
+                                            ЗАПЛАНИРОВАТЬ ПУБЛИКАЦИЮ
+                                        </Button>
+                                    </div>
                                     <p className="text-[10px] text-center text-white/40 italic px-4">
                                         Конкурс будет немедленно опубликован в выбранном Telegram канале и станет доступен для регистрации.
                                     </p>
                                 </div>
                             )}
 
-                                    {selectedContest.status === 'active' && (
+                            {effectiveStatus(selectedContest) === 'scheduled' && (
+                                <div className="space-y-3">
+                                    <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-2xl flex items-center space-x-3 text-sky-300">
+                                        <Clock size={24} />
+                                        <div className="text-sm font-bold">Конкурс запланирован к публикации</div>
+                                    </div>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => handleLoadPreview(selectedContest.id)}
+                                        className="w-full"
+                                    >
+                                        ПРЕДПРОСМОТР ПОСТА
+                                    </Button>
+                                    <Button
+                                        onClick={() => handlePublish(selectedContest.id)}
+                                        isLoading={isActionLoading('publish', selectedContest.id)}
+                                        className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
+                                    >
+                                        ОПУБЛИКОВАТЬ СЕЙЧАС
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => handleCancelSchedulePublish(selectedContest.id)}
+                                        isLoading={isActionLoading('cancelSchedule', selectedContest.id)}
+                                        className="w-full"
+                                    >
+                                        ОТМЕНИТЬ ОТЛОЖЕННУЮ ПУБЛИКАЦИЮ
+                                    </Button>
+                                </div>
+                            )}
+
+                                    {effectiveStatus(selectedContest) === 'active' && (
                                         <div className="space-y-3">
                                             <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center space-x-3 text-emerald-400">
                                                 <CheckCircle2 size={24} />
                                                 <div className="text-sm font-bold">Конкурс запущен и активен</div>
                                             </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <Button variant="secondary" onClick={() => handleLoadPreview(selectedContest.id)} className="w-full">
+                                            ПРЕДПРОСМОТР
+                                        </Button>
+                                        <Button variant="secondary" onClick={() => handleExportParticipants(selectedContest.id)} className="w-full">
+                                            ЭКСПОРТ CSV
+                                        </Button>
+                                    </div>
+                                            <Button
+                                                variant="secondary"
+                                                onClick={() => handleRepairContest(selectedContest.id)}
+                                                isLoading={isActionLoading('repair', selectedContest.id)}
+                                                className="w-full"
+                                            >
+                                                ВОССТАНОВИТЬ КОНКУРС
+                                            </Button>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => handleLoadRepublishDiff(selectedContest.id)}
+                                                    className="w-full col-span-2"
+                                                >
+                                                    ПОКАЗАТЬ DIFF ПЕРЕД ПЕРЕПУБЛИКАЦИЕЙ
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => handleRepublish(selectedContest.id, 'edit')}
+                                                    isLoading={isActionLoading('editPost', selectedContest.id)}
+                                                    className="w-full"
+                                                >
+                                                    ОБНОВИТЬ ПОСТ
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={() => handleRepublish(selectedContest.id, 'repost')}
+                                                    isLoading={isActionLoading('repost', selectedContest.id)}
+                                                    className="w-full"
+                                                >
+                                                    ПЕРЕПУБЛИКОВАТЬ
+                                                </Button>
+                                            </div>
                                             <Button
                                                 onClick={() => handleRunContest(selectedContest.id)}
-                                                isLoading={isPublishing}
+                                                isLoading={isActionLoading('draw', selectedContest.id)}
                                                 className="w-full bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20"
                                             >
                                                 <Trophy size={18} className="mr-2" /> РАЗЫГРАТЬ СЕЙЧАС
@@ -473,13 +1453,154 @@ export const AdminPage: React.FC = () => {
                                             <Button
                                                 variant="secondary"
                                                 onClick={() => handleDeleteContest(selectedContest.id)}
-                                                isLoading={isPublishing}
+                                                isLoading={isActionLoading('delete', selectedContest.id)}
                                                 className="w-full text-red-500/60 border-red-500/10 hover:bg-red-500/10"
                                             >
                                                 <Trash2 size={18} className="mr-2" /> УДАЛИТЬ КОНКУРС
                                             </Button>
                                         </div>
                                     )}
+
+                            {effectiveStatus(selectedContest) === 'finished' && (
+                                <div className="space-y-3">
+                                    <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center space-x-3 text-amber-300">
+                                        <Trophy size={24} />
+                                        <div className="text-sm font-bold">Розыгрыш завершен, результаты готовы к проверке</div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <Button variant="secondary" onClick={() => handleLoadResultsPreview(selectedContest.id)} className="w-full">
+                                            ЧЕРНОВИК РЕЗУЛЬТАТОВ
+                                        </Button>
+                                        <Button variant="secondary" onClick={() => handleExportParticipants(selectedContest.id)} className="w-full">
+                                            ЭКСПОРТ CSV
+                                        </Button>
+                                    </div>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => handleRepairContest(selectedContest.id)}
+                                        isLoading={isActionLoading('repair', selectedContest.id)}
+                                        className="w-full"
+                                    >
+                                        ВОССТАНОВИТЬ КОНКУРС
+                                    </Button>
+                                    <Button
+                                        onClick={() => handlePublishResults(selectedContest.id)}
+                                        isLoading={isActionLoading('publishResults', selectedContest.id)}
+                                        className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
+                                    >
+                                        ОПУБЛИКОВАТЬ РЕЗУЛЬТАТЫ
+                                    </Button>
+                                </div>
+                            )}
+
+                            {effectiveStatus(selectedContest) === 'results_published' && (
+                                <div className="space-y-3">
+                                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center space-x-3 text-white/70">
+                                        <CheckCircle2 size={24} />
+                                        <div className="text-sm font-bold">Результаты уже опубликованы</div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <Button variant="secondary" onClick={() => handleLoadResultsPreview(selectedContest.id)} className="w-full">
+                                            ПРЕДПРОСМОТР РЕЗУЛЬТАТОВ
+                                        </Button>
+                                        <Button variant="secondary" onClick={() => handleExportParticipants(selectedContest.id)} className="w-full">
+                                            ЭКСПОРТ CSV
+                                        </Button>
+                                    </div>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => handleRepairContest(selectedContest.id)}
+                                        isLoading={isActionLoading('repair', selectedContest.id)}
+                                        className="w-full"
+                                    >
+                                        ВОССТАНОВИТЬ КОНКУРС
+                                    </Button>
+                                </div>
+                            )}
+
+                            {preview && preview.contest_id === selectedContest.id && (
+                                <GlassCard className="p-4 space-y-3">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Предпросмотр публикации</div>
+                                    <div className="text-xs whitespace-pre-wrap leading-6 text-white/80">{preview.text}</div>
+                                    {preview.button_url && (
+                                        <div className="text-[11px] text-primary break-all">{preview.button_url}</div>
+                                    )}
+                                </GlassCard>
+                            )}
+
+                            {resultsPreview && resultsPreview.contest_id === selectedContest.id && (
+                                <GlassCard className="p-4 space-y-3">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Черновик результатов</div>
+                                    <div className="text-xs whitespace-pre-wrap leading-6 text-white/80">{resultsPreview.text}</div>
+                                    <div className="space-y-2">
+                                        {resultsPreview.winners.map((winner) => (
+                                            <div key={winner.place} className="text-xs text-white/70">
+                                                {winner.place} место: {winner.title} - {winner.winner_username || winner.winner_firstname || winner.winner_user_id}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </GlassCard>
+                            )}
+
+                            {republishDiff && republishDiff.contest_id === selectedContest.id && (
+                                <GlassCard className="p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Diff перепубликации</div>
+                                        <div className={cn(
+                                            "text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md",
+                                            republishDiff.has_changes
+                                                ? "text-amber-300 bg-amber-500/10"
+                                                : "text-emerald-300 bg-emerald-500/10"
+                                        )}>
+                                            {republishDiff.has_changes ? 'Есть изменения' : 'Без изменений'}
+                                        </div>
+                                    </div>
+                                    {republishDiff.diff ? (
+                                        <pre className="text-[11px] whitespace-pre-wrap leading-5 text-white/75 bg-black/20 border border-white/10 rounded-xl p-3 overflow-auto">
+                                            {republishDiff.diff}
+                                        </pre>
+                                    ) : (
+                                        <div className="text-xs text-white/45">Diff пуст, текущий и предыдущий рендер совпадают.</div>
+                                    )}
+                                    {!republishDiff.has_baseline && (
+                                        <div className="text-[11px] text-white/45">
+                                            Базовый рендер не найден в истории публикаций. Показано сравнение с пустым шаблоном.
+                                        </div>
+                                    )}
+                                    {republishDiff.button_url && (
+                                        <div className="text-[11px] text-primary break-all">{republishDiff.button_url}</div>
+                                    )}
+                                </GlassCard>
+                            )}
+
+                            {contestHistory && (
+                                <GlassCard className="p-4 space-y-3">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">История действий</div>
+                                    {contestHistory.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {contestHistory.slice(0, 8).map((entry) => (
+                                                <div key={entry.id} className="text-xs text-white/70 flex items-start justify-between gap-4">
+                                                    <div className="min-w-0">
+                                                        <div className="font-semibold text-white/85">
+                                                            {historyActionLabels[entry.action_type] || entry.action_type}
+                                                        </div>
+                                                        {formatHistoryDetails(entry) && (
+                                                            <div className="text-white/40">{formatHistoryDetails(entry)}</div>
+                                                        )}
+                                                    </div>
+                                                    <div className="shrink-0 text-white/30">
+                                                        {new Date(entry.created_at).toLocaleString()}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-white/40">
+                                            Действий по этому конкурсу пока нет.
+                                        </div>
+                                    )}
+                                </GlassCard>
+                            )}
                         </div>
                     </motion.div>
                 ) : (
@@ -490,6 +1611,14 @@ export const AdminPage: React.FC = () => {
                         exit={{ opacity: 0 }}
                         className="space-y-6"
                     >
+                        {(error || successMessage) && (
+                            <div className={cn(
+                                "text-xs rounded-xl px-4 py-3 border",
+                                error ? "text-red-300 bg-red-500/10 border-red-500/20" : "text-emerald-300 bg-emerald-500/10 border-emerald-500/20"
+                            )}>
+                                {error || successMessage}
+                            </div>
+                        )}
                         <header className="flex items-center justify-between px-1 relative z-20">
                             <h1 className="text-2xl font-black italic tracking-tighter">ADMIN <span className="text-primary">PANEL</span></h1>
                             <div className="relative">
@@ -527,36 +1656,34 @@ export const AdminPage: React.FC = () => {
                         </header>
 
                         {/* Stats Quick Grid */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <GlassCard className="p-3 bg-primary/5 hover:bg-primary/10 transition-colors">
-                                <div className="flex items-center space-x-2 text-white/40 mb-1">
-                                    <Trophy size={14} />
-                                    <span className="text-[10px] font-bold uppercase tracking-wider">Всего конкурсов</span>
-                                </div>
-                                <div className="text-2xl font-bold">{analytics?.total_contests || 0}</div>
-                            </GlassCard>
-                            <GlassCard className="p-3 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors">
-                                <div className="flex items-center space-x-2 text-emerald-400/40 mb-1">
-                                    <TrendingUp size={14} />
-                                    <span className="text-[10px] font-bold uppercase tracking-wider">Активные</span>
-                                </div>
-                                <div className="text-2xl font-bold flex items-baseline">
-                                    {analytics?.active_contests || 0}
-                                    <span className="text-[10px] ml-1 text-emerald-400">/ {analytics?.completed_contests || 0}</span>
-                                </div>
-                            </GlassCard>
-                        </div>
+                        <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка статистики...</div>}>
+                            <DashboardStatsGrid
+                                totalContests={analytics?.total_contests || 0}
+                                activeContests={analytics?.active_contests || 0}
+                                completedContests={analytics?.completed_contests || 0}
+                                scheduledCount={scheduledContests.length}
+                                draftCount={draftContests.length}
+                                archivedCount={archivedContests.length}
+                                onOpenAllContests={() => openContestsWithFilter('all')}
+                                onOpenActiveContests={() => openContestsWithFilter('active')}
+                                onOpenScheduledContests={() => openContestsWithFilter('scheduled')}
+                                onOpenDraftContests={() => openContestsWithFilter('draft')}
+                                onOpenArchive={() => handleTabChange('archive')}
+                            />
+                        </Suspense>
 
                         {/* Tabs */}
                         <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
                             {[
                                 { id: 'dash', label: 'Обзор' },
                                 { id: 'contests', label: 'Конкурсы' },
+                                { id: 'archive', label: 'Архив' },
+                                { id: 'journal', label: 'Журнал' },
                                 { id: 'channels', label: 'Каналы' }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
-                                    onClick={() => handleTabChange(tab.id as 'dash' | 'contests' | 'channels')}
+                                    onClick={() => handleTabChange(tab.id as AdminTab)}
                                     className={cn(
                                         'flex-1 py-2.5 text-[10px] uppercase tracking-widest font-black rounded-lg transition-all',
                                         activeTab === tab.id ? 'bg-primary text-white shadow-lg' : 'text-white/40'
@@ -578,50 +1705,138 @@ export const AdminPage: React.FC = () => {
                                 >
                                     <GlassCard className="p-4 border-white/5 space-y-4">
                                         <div className="flex items-center justify-between">
-                                            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Рост аудитории</h3>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Рост аудитории</h3>
+                                                <div className="hidden sm:flex items-center gap-1">
+                                                    {[7, 30, 90].map((period) => (
+                                                        <button
+                                                            key={period}
+                                                            onClick={() => setGrowthDays(period as 7 | 30 | 90)}
+                                                            className={cn(
+                                                                'px-2 py-1 rounded-md text-[10px] font-bold transition-colors',
+                                                                growthDays === period
+                                                                    ? 'bg-primary text-white'
+                                                                    : 'bg-white/5 text-white/45 hover:bg-white/10'
+                                                            )}
+                                                        >
+                                                            {period}д
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
                                             <div className="text-xs font-bold text-primary flex items-center bg-primary/10 px-2 py-1 rounded-md">
                                                 <Users size={12} className="mr-1" />
                                                 {analytics?.total_participants || 0}
                                             </div>
                                         </div>
-                                        <div className="h-48 w-full">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <AreaChart data={analyticsGrowth}>
-                                                    <defs>
-                                                        <linearGradient id="colorPart" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                                                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                                                        </linearGradient>
-                                                    </defs>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                                                    <XAxis
-                                                        dataKey="date"
-                                                        stroke="#ffffff40"
-                                                        fontSize={10}
-                                                        tickLine={false}
-                                                        axisLine={false}
-                                                    />
-                                                    <Tooltip
-                                                        contentStyle={{ backgroundColor: '#1c1c1e', border: '1px solid #ffffff10', borderRadius: '8px' }}
-                                                        itemStyle={{ color: '#fff' }}
-                                                    />
-                                                    <Area
-                                                        type="monotone"
-                                                        dataKey="participants"
-                                                        stroke="#8b5cf6"
-                                                        strokeWidth={2}
-                                                        fillOpacity={1}
-                                                        fill="url(#colorPart)"
-                                                        strokeDasharray="5 5"
-                                                    />
-                                                </AreaChart>
-                                            </ResponsiveContainer>
+                                        <div className="sm:hidden flex items-center gap-1">
+                                            {[7, 30, 90].map((period) => (
+                                                <button
+                                                    key={period}
+                                                    onClick={() => setGrowthDays(period as 7 | 30 | 90)}
+                                                    className={cn(
+                                                        'px-2 py-1 rounded-md text-[10px] font-bold transition-colors',
+                                                        growthDays === period
+                                                            ? 'bg-primary text-white'
+                                                            : 'bg-white/5 text-white/45 hover:bg-white/10'
+                                                    )}
+                                                >
+                                                    {period} дней
+                                                </button>
+                                            ))}
                                         </div>
+                                        <Suspense fallback={<div className="h-48 w-full rounded-2xl bg-white/5 animate-pulse" />}>
+                                            <GrowthChart data={analyticsGrowth} />
+                                        </Suspense>
                                     </GlassCard>
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {/* More stats could go here */}
-                                    </div>
+                                    <GlassCard className="p-4 border-white/5 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Запланированные публикации</h3>
+                                            <div className="text-[10px] text-white/30">
+                                                {scheduledContests.length > 0 ? `${scheduledContests.length} в очереди` : 'Очередь пуста'}
+                                            </div>
+                                        </div>
+                                        {scheduledContests.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {scheduledContests.slice(0, 5).map((contest) => (
+                                                    <div
+                                                        key={contest.id}
+                                                        className="w-full text-left p-3 rounded-2xl border border-sky-500/10 bg-sky-500/5 hover:bg-sky-500/10 transition-colors"
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="min-w-0">
+                                                                <div className="font-semibold text-sm text-white/90 truncate">{contest.title}</div>
+                                                                <div className="text-[11px] text-white/45 truncate">
+                                                                    {contest.channel?.channel_title || 'Без канала'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-[10px] text-sky-300 shrink-0">
+                                                                {contest.publish_at ? new Date(contest.publish_at).toLocaleString() : 'Без даты'}
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-2 mt-3">
+                                                            <button
+                                                                onClick={() => handleOpenContestById(contest.id)}
+                                                                className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-white/70 transition-colors"
+                                                            >
+                                                                Открыть
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handlePublish(contest.id)}
+                                                                disabled={!!actionLoadingKey}
+                                                                className="px-3 py-2 rounded-xl bg-primary/15 hover:bg-primary/20 text-[10px] font-bold uppercase tracking-wider text-primary transition-colors disabled:opacity-50"
+                                                            >
+                                                                {isActionLoading('publish', contest.id) ? '...' : 'Сейчас'}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleCancelSchedulePublish(contest.id)}
+                                                                disabled={!!actionLoadingKey}
+                                                                className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/15 text-[10px] font-bold uppercase tracking-wider text-red-300 transition-colors disabled:opacity-50"
+                                                            >
+                                                                {isActionLoading('cancelSchedule', contest.id) ? '...' : 'Отменить'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={handleBulkPublishNow}
+                                                        isLoading={isActionLoading('bulkPublishScheduled')}
+                                                        className="w-full"
+                                                    >
+                                                        ОПУБЛИКОВАТЬ ВСЕ
+                                                    </Button>
+                                                    <Button
+                                                        variant="secondary"
+                                                        onClick={handleBulkCancelSchedule}
+                                                        isLoading={isActionLoading('bulkCancelSchedule')}
+                                                        className="w-full"
+                                                    >
+                                                        ОТМЕНИТЬ ВСЕ
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-white/40">
+                                                Нет конкурсов, ожидающих публикации. Активных сейчас: {activeContests.length}, черновиков: {draftContests.length}.
+                                            </div>
+                                        )}
+                                    </GlassCard>
+
+                                    <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка состояния системы...</div>}>
+                                        <SystemHealthPanel health={analyticsHealth} onOpenContest={handleOpenContestById} />
+                                    </Suspense>
+
+                                    <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка панели...</div>}>
+                                        <DashboardQuickPanels
+                                            recentActionsCount={recentActions?.length || 0}
+                                            archivedContestsCount={archivedContests.length}
+                                            onOpenJournal={() => handleTabChange('journal')}
+                                            onOpenArchive={() => handleTabChange('archive')}
+                                        />
+                                    </Suspense>
                                 </motion.div>
                             )}
                             {activeTab === 'contests' && (
@@ -643,8 +1858,43 @@ export const AdminPage: React.FC = () => {
                                         </button>
                                     </div>
 
+                                    <GlassCard className="p-4 border-white/5 space-y-3">
+                                        <div className="grid grid-cols-1 gap-3">
+                                            <input
+                                                type="text"
+                                                value={contestSearch}
+                                                onChange={(e) => setContestSearch(e.target.value)}
+                                                placeholder="Поиск по названию или каналу"
+                                                className="form-input"
+                                            />
+                                            <div className="flex flex-wrap gap-2">
+                                                {[
+                                                    { id: 'all', label: 'Все' },
+                                                    { id: 'scheduled', label: 'Заплан.' },
+                                                    { id: 'active', label: 'Активные' },
+                                                    { id: 'draft', label: 'Черновики' },
+                                                    { id: 'finished', label: 'Завершённые' },
+                                                    { id: 'results_published', label: 'С результатами' },
+                                                ].map((filter) => (
+                                                    <button
+                                                        key={filter.id}
+                                                        onClick={() => setContestFilter(filter.id as typeof contestFilter)}
+                                                        className={cn(
+                                                            'px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors',
+                                                            contestFilter === filter.id
+                                                                ? 'bg-primary text-white'
+                                                                : 'bg-white/5 text-white/55 hover:bg-white/10'
+                                                        )}
+                                                    >
+                                                        {filter.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </GlassCard>
+
                                     <div className="space-y-3">
-                                        {isContestsLoading ? (
+                                        {(isContestsLoading || (activeTab === 'contests' && isPagedContestsLoading)) ? (
                                             Array.from({ length: 3 }).map((_, i) => (
                                                 <GlassCard key={i} className="p-4 border-white/5 space-y-4 animate-pulse">
                                                     <div className="flex justify-between">
@@ -662,7 +1912,7 @@ export const AdminPage: React.FC = () => {
                                                 animate={{ opacity: 1 }}
                                                 className="space-y-3"
                                             >
-                                                {contests?.map((c) => (
+                                                {contestsList.map((c) => (
                                                     <GlassCard
                                                         key={c.id}
                                                         onClick={() => setSelectedContest(c)}
@@ -678,11 +1928,12 @@ export const AdminPage: React.FC = () => {
                                                             </div>
                                                             <div className={cn(
                                                                 'text-[8px] font-black tracking-widest px-2 py-1 rounded-md uppercase',
-                                                                c.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                                                    c.status === 'draft' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                                                effectiveStatus(c) === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                                                    effectiveStatus(c) === 'draft' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                                                        effectiveStatus(c) === 'scheduled' ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20' :
                                                                         'bg-white/5 text-white/20 border border-white/10'
                                                             )}>
-                                                                {c.status}
+                                                                {effectiveStatus(c)}
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center justify-between pt-4 border-t border-white/5">
@@ -702,19 +1953,78 @@ export const AdminPage: React.FC = () => {
                                                         </div>
                                                     </GlassCard>
                                                 ))}
-                                                {contests?.length === 0 && (
+                                                {contestsList.length === 0 && (
                                                     <div className="py-20 text-center space-y-4">
                                                         <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/10">
                                                             <Trophy size={32} />
                                                         </div>
-                                                        <p className="text-sm text-white/20 italic">Конкурсов пока нет</p>
-                                                        <Button variant="secondary" onClick={() => setIsCreating(true)}>Создать первый</Button>
+                                                        <p className="text-sm text-white/20 italic">
+                                                            {contestsTotal > 0 ? 'По текущему фильтру конкурсы не найдены' : 'Конкурсов пока нет'}
+                                                        </p>
+                                                        {contestsTotal === 0 && <Button variant="secondary" onClick={() => setIsCreating(true)}>Создать первый</Button>}
                                                     </div>
+                                                )}
+
+                                                {contestsTotal > 0 && (
+                                                    <GlassCard className="p-3 border-white/5">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="text-[11px] text-white/45">
+                                                                Показано {Math.min((contestPage - 1) * contestPageSize + 1, contestsTotal)}-
+                                                                {Math.min(contestPage * contestPageSize, contestsTotal)} из {contestsTotal}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => setContestPage((page) => Math.max(1, page - 1))}
+                                                                    disabled={contestPage <= 1}
+                                                                    className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-white/70 transition-colors disabled:opacity-40"
+                                                                >
+                                                                    Назад
+                                                                </button>
+                                                                <div className="text-[10px] text-white/45">
+                                                                    {contestPage}/{contestsTotalPages}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setContestPage((page) => Math.min(contestsTotalPages, page + 1))}
+                                                                    disabled={contestPage >= contestsTotalPages}
+                                                                    className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-white/70 transition-colors disabled:opacity-40"
+                                                                >
+                                                                    Вперёд
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </GlassCard>
                                                 )}
                                             </motion.div>
                                         )}
                                     </div>
                                 </motion.div>
+                            )}
+
+                            {activeTab === 'archive' && (
+                                <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка архива...</div>}>
+                                    <ArchiveTab
+                                        archivedContests={archivedContests}
+                                        effectiveStatus={effectiveStatus}
+                                        onOpenContest={handleOpenContestById}
+                                    />
+                                </Suspense>
+                            )}
+
+                            {activeTab === 'journal' && (
+                                <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка журнала...</div>}>
+                                    <JournalTab
+                                        recentActions={recentActions}
+                                        filteredRecentActions={filteredRecentActions}
+                                        actionSearch={actionSearch}
+                                        actionFilter={actionFilter}
+                                        onActionSearchChange={setActionSearch}
+                                        onActionFilterChange={setActionFilter}
+                                        historyActionLabels={historyActionLabels}
+                                        formatHistoryDetails={formatHistoryDetails}
+                                        contests={contests}
+                                        onOpenContest={handleOpenContestById}
+                                    />
+                                </Suspense>
                             )}
 
 
@@ -729,7 +2039,7 @@ export const AdminPage: React.FC = () => {
                                         >
                                             <div className="flex justify-between items-center mb-2">
                                                 <h4 className="font-bold text-sm">
-                                                    Добавить {addingChannelType === 'telegram' ? 'Telegram' : 'YouTube'} канал
+                                                    Добавить {addingChannelType === 'telegram' ? 'Telegram' : addingChannelType === 'youtube' ? 'YouTube' : 'Kick'} канал
                                                 </h4>
                                                 <button onClick={() => setAddingChannelType(null)} className="text-white/40">
                                                     <Trash2 size={16} />
@@ -737,7 +2047,13 @@ export const AdminPage: React.FC = () => {
                                             </div>
                                             <input
                                                 className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-colors"
-                                                placeholder={addingChannelType === 'telegram' ? "@username канала" : "ID канала (UC...)"}
+                                                placeholder={
+                                                    addingChannelType === 'telegram'
+                                                        ? "@username канала"
+                                                        : addingChannelType === 'youtube'
+                                                            ? "ID канала (UC...)"
+                                                            : "slug канала (например se1dhe)"
+                                                }
                                                 value={newChannelInput}
                                                 onChange={e => setNewChannelInput(e.target.value)}
                                             />
@@ -895,6 +2211,63 @@ export const AdminPage: React.FC = () => {
                                                 </GlassCard>
                                             ))}
                                             {(!youtubeChannels || youtubeChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет YouTube каналов</p>}
+                                        </div>
+
+                                        {/* Kick Channels */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Kick Каналы</h3>
+                                                <button
+                                                    onClick={() => { setAddingChannelType('kick'); setNewChannelInput(''); setError(null); }}
+                                                    className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg flex items-center space-x-1 active:scale-95 transition-all"
+                                                >
+                                                    <Plus size={14} />
+                                                    <span>Добавить</span>
+                                                </button>
+                                            </div>
+                                            {kickChannels?.map((ch, i) => (
+                                                <GlassCard
+                                                    key={i}
+                                                    className={cn(
+                                                        "relative p-4 flex items-center justify-between border-white/5 bg-emerald-500/5 group",
+                                                        activeChannelId === ch.channel_id ? "z-20" : "z-0"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center space-x-4 min-w-0 flex-1">
+                                                        <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400 font-black shrink-0">
+                                                            <Gamepad2 size={20} />
+                                                        </div>
+                                                        <div className="overflow-hidden min-w-0">
+                                                            <div className="text-sm font-bold truncate pr-2">{ch.title}</div>
+                                                            <div className="text-[10px] text-white/40 truncate">{ch.channel_id}</div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setActiveChannelId(activeChannelId === ch.channel_id ? null : ch.channel_id); }}
+                                                        className="p-2 text-white/20 hover:text-white/60 transition-colors rounded-lg hover:bg-white/5 shrink-0 ml-2"
+                                                    >
+                                                        <Settings size={16} />
+                                                    </button>
+                                                    {activeChannelId === ch.channel_id && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, scale: 0.9 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            className="absolute right-2 top-12 z-10 w-48 bg-[#1c1c1e] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                                                        >
+                                                            <div className="p-1 space-y-1">
+                                                                <button
+                                                                    className="w-full flex items-center space-x-2 px-3 py-2 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                                                                    onClick={() => handleDeleteKickChannel(ch.channel_id)}
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                    <span>Удалить канал</span>
+                                                                </button>
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </GlassCard>
+                                            ))}
+                                            {(!kickChannels || kickChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет Kick каналов</p>}
                                         </div>
                                     </div>
                                 </motion.div>

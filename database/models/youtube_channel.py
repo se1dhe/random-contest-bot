@@ -10,7 +10,7 @@ class YoutubeChannel(BaseModel):
     
     __tablename__ = 'youtube_channels'
     
-    channel_id = Column(String(255), primary_key=True)
+    channel_id = Column(String(255), nullable=False, unique=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     

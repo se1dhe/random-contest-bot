@@ -26,8 +26,8 @@ class Participant(BaseModel):
     # Уникальный индекс: один пользователь может зарегистрироваться только один раз на конкурс
     __table_args__ = (
         Index('uq_contest_user', 'contest_id', 'user_id', unique=True),
+        Index('uq_participants_contest_registration_number', 'contest_id', 'registration_number', unique=True),
     )
     
     def __repr__(self):
         return f"<Participant(id={self.id}, contest_id={self.contest_id}, user_id={self.user_id}, number={self.registration_number})>"
-

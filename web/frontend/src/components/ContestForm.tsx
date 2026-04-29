@@ -9,11 +9,15 @@ import {
     ChevronLeft,
     ChevronRight,
     Youtube,
-    Check
+    Twitch,
+    Gamepad2,
+    Check,
+    MessageSquare
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { GlassCard } from './ui/Cards';
 import { useTelegram } from '../hooks/useTelegram';
+import { LANGUAGES, type ContestLanguage } from '../i18n';
 
 interface Prize {
     place: number;
@@ -35,6 +39,15 @@ interface AdminYoutubeChannel {
     title: string;
     description?: string;
 }
+interface AdminKickChannel {
+    channel_id: string;
+    title: string;
+    description?: string;
+}
+interface ForumTopic {
+    message_thread_id: number;
+    name: string;
+}
 
 interface ContestFormProps {
     onSuccess: () => void;
@@ -45,11 +58,15 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const { initData, hapticFeedback } = useTelegram();
     const [step, setStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Form State
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
+    const [language, setLanguage] = useState<ContestLanguage>('ru');
     const [channelId, setChannelId] = useState('');
+    const [topicChoice, setTopicChoice] = useState('');
+    const [manualThreadId, setManualThreadId] = useState('');
     const [endDate, setEndDate] = useState('');
     const [prizeCount, setPrizeCount] = useState(1);
     const [drawMethod, setDrawMethod] = useState('random');
@@ -58,11 +75,50 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [postToSponsors, setPostToSponsors] = useState(false);
     const [requireYoutube, setRequireYoutube] = useState(false);
     const [youtubeDays, setYoutubeDays] = useState(0);
+    const [requireTwitch, setRequireTwitch] = useState(false);
+    const [twitchDays, setTwitchDays] = useState(0);
+    const [twitchChannelId, setTwitchChannelId] = useState('');
+    const [requireKick, setRequireKick] = useState(false);
+    const [kickDays, setKickDays] = useState(0);
+    const [kickChannelId, setKickChannelId] = useState('');
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
     // New Fields
     const [youtubeChannelId, setYoutubeChannelId] = useState('');
+
+    const normalizedTitle = title.trim();
+    const titleTooShort = normalizedTitle.length > 0 && normalizedTitle.length < 3;
+    const titleTooLong = normalizedTitle.length > 120;
+    const endDateValue = endDate ? new Date(endDate) : null;
+    const endDateInvalid = !!endDate && (!endDateValue || Number.isNaN(endDateValue.getTime()));
+    const endDateInPast = !!endDateValue && !Number.isNaN(endDateValue.getTime()) && endDateValue.getTime() <= Date.now();
+    const hasStep1ValidationErrors =
+        !normalizedTitle ||
+        titleTooShort ||
+        titleTooLong ||
+        !channelId ||
+        !endDate ||
+        endDateInvalid ||
+        endDateInPast;
+
+    const youtubeChannelMissing = requireYoutube && !youtubeChannelId.trim();
+    const youtubeDaysInvalid = requireYoutube && youtubeDays < 0;
+    const twitchChannelMissing = requireTwitch && !twitchChannelId.trim();
+    const twitchDaysInvalid = requireTwitch && twitchDays < 0;
+    const kickChannelMissing = requireKick && !kickChannelId.trim();
+    const kickDaysInvalid = requireKick && kickDays < 0;
+    const manualThreadIdMissing = topicChoice === 'manual' && !manualThreadId.trim();
+    const manualThreadIdInvalid =
+        topicChoice === 'manual' &&
+        (!Number.isInteger(Number(manualThreadId)) || Number(manualThreadId) <= 0);
+    const hasStep3ValidationErrors =
+        youtubeChannelMissing ||
+        youtubeDaysInvalid ||
+        twitchChannelMissing ||
+        twitchDaysInvalid ||
+        kickChannelMissing ||
+        kickDaysInvalid;
 
 
     // Queries
@@ -78,10 +134,34 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         enabled: !!initData,
     });
 
+    const { data: forumTopics } = useQuery<ForumTopic[]>({
+        queryKey: ['admin_forum_topics', initData, channelId],
+        queryFn: async () => {
+            const res = await axios.get(`/api/admin/channels/${channelId}/forum-topics`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!initData && !!channelId,
+    });
+
     const { data: youtubeChannels } = useQuery<AdminYoutubeChannel[]>({
         queryKey: ['admin_youtube_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/youtube-channels', {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!initData,
+    });
+
+    const { data: kickChannels } = useQuery<AdminKickChannel[]>({
+        queryKey: ['admin_kick_channels', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/kick-channels', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -127,22 +207,43 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     };
 
     const handleSubmit = async () => {
+        if (hasStep3ValidationErrors) {
+            hapticFeedback('rigid');
+            setError('Заполните обязательные поля условий YouTube/Twitch/Kick перед созданием конкурса.');
+            return;
+        }
+
         setIsSubmitting(true);
+        setError(null);
         hapticFeedback('medium');
 
         const formData = new FormData();
         formData.append('title', title);
         formData.append('description', description);
+        formData.append('language', language);
         formData.append('channel_id', channelId);
         formData.append('end_date', endDate);
         formData.append('prize_count', prizeCount.toString());
         formData.append('draw_method', drawMethod);
         formData.append('require_youtube_subscription', requireYoutube.toString());
         formData.append('youtube_subscription_days_required', youtubeDays.toString());
+        formData.append('require_twitch_follow', requireTwitch.toString());
+        formData.append('twitch_follow_days_required', twitchDays.toString());
+        formData.append('require_kick_follow', requireKick.toString());
+        formData.append('kick_follow_days_required', kickDays.toString());
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
         formData.append('post_to_sponsors', postToSponsors.toString());
+        const selectedThreadId =
+            topicChoice === 'manual'
+                ? manualThreadId.trim()
+                : topicChoice.startsWith('topic:')
+                    ? topicChoice.replace('topic:', '')
+                    : '';
+        if (selectedThreadId) formData.append('message_thread_id', selectedThreadId);
         if (requireYoutube) formData.append('youtube_channel_id', youtubeChannelId);
+        if (requireTwitch) formData.append('twitch_channel_id', twitchChannelId);
+        if (requireKick) formData.append('kick_channel_id', kickChannelId);
         if (image) formData.append('image', image);
 
         try {
@@ -155,16 +256,24 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
             });
             hapticFeedback('heavy');
             onSuccess();
-        } catch (err) {
+        } catch (err: unknown) {
             console.error('Failed to create contest', err);
             hapticFeedback('rigid');
+            const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+            setError(detail || 'Не удалось создать конкурс');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const nextStep = () => {
+        if (step === 1 && hasStep1ValidationErrors) {
+            hapticFeedback('rigid');
+            setError('Проверьте название конкурса и дату окончания перед переходом к следующему шагу.');
+            return;
+        }
         hapticFeedback('light');
+        setError(null);
         setStep(s => s + 1);
     };
 
@@ -175,6 +284,11 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
 
     return (
         <div className="space-y-6">
+            {error && (
+                <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                    {error}
+                </div>
+            )}
             <header className="flex items-center space-x-3">
                 <button onClick={onCancel} className="p-2 bg-white/5 rounded-full text-white/40">
                     <ChevronLeft size={20} />
@@ -200,13 +314,35 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                     >
                         <div className="space-y-4">
                             <div>
-                                <label className="form-label">Заголовок</label>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <label className="form-label mb-0">Заголовок</label>
+                                    <div className="flex rounded-full border border-white/10 bg-white/5 p-1">
+                                        {LANGUAGES.map((item) => (
+                                            <button
+                                                key={item.code}
+                                                type="button"
+                                                aria-label={`Contest language ${item.label}`}
+                                                title={item.label}
+                                                onClick={() => setLanguage(item.code)}
+                                                className={`h-8 w-8 rounded-full text-base transition-all ${language === item.code ? 'bg-primary/25 ring-1 ring-primary/60' : 'opacity-55 hover:opacity-100'}`}
+                                            >
+                                                {item.flag}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <input
                                     className="form-input"
                                     placeholder="Название вашего розыгрыша"
                                     value={title}
                                     onChange={e => setTitle(e.target.value)}
                                 />
+                                {titleTooShort && (
+                                    <div className="mt-1 text-[10px] text-red-300">Название должно быть не короче 3 символов.</div>
+                                )}
+                                {titleTooLong && (
+                                    <div className="mt-1 text-[10px] text-red-300">Название должно быть не длиннее 120 символов.</div>
+                                )}
                             </div>
 
                             <div>
@@ -224,7 +360,11 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                 <select
                                     className="form-select"
                                     value={channelId}
-                                    onChange={e => setChannelId(e.target.value)}
+                                    onChange={e => {
+                                        setChannelId(e.target.value);
+                                        setTopicChoice('');
+                                        setManualThreadId('');
+                                    }}
                                 >
                                     <option value="">Выберите канал...</option>
                                     {channels?.map(c => (
@@ -232,6 +372,59 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                     ))}
                                 </select>
                             </div>
+
+                            {channelId && (
+                                <div className="space-y-3">
+                                    <label className="form-label">Раздел / топик группы</label>
+                                    <GlassCard className="p-4 space-y-3">
+                                        <div className="flex items-center gap-3 text-white/70">
+                                            <div className="p-2 rounded-lg bg-white/10 text-primary">
+                                                <MessageSquare size={18} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold text-white/90">Куда публиковать конкурс</div>
+                                                <div className="text-[10px] text-white/40">Для каналов оставьте основной чат; для forum-групп выберите топик.</div>
+                                            </div>
+                                        </div>
+                                        <select
+                                            className="form-select text-xs py-2"
+                                            value={topicChoice}
+                                            onChange={e => {
+                                                setTopicChoice(e.target.value);
+                                                if (e.target.value !== 'manual') setManualThreadId('');
+                                            }}
+                                        >
+                                            <option value="">Основной чат / без топика</option>
+                                            {forumTopics?.map(topic => (
+                                                <option key={topic.message_thread_id} value={`topic:${topic.message_thread_id}`}>
+                                                    {topic.name} · ID {topic.message_thread_id}
+                                                </option>
+                                            ))}
+                                            <option value="manual">Ввести ID топика вручную</option>
+                                        </select>
+                                        {topicChoice === 'manual' && (
+                                            <div>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    className="form-input py-2 text-xs"
+                                                    placeholder="message_thread_id, например 123"
+                                                    value={manualThreadId}
+                                                    onChange={e => setManualThreadId(e.target.value)}
+                                                />
+                                                {(manualThreadIdMissing || manualThreadIdInvalid) && (
+                                                    <div className="mt-1 text-[10px] text-red-300">ID топика должен быть положительным числом.</div>
+                                                )}
+                                            </div>
+                                        )}
+                                        {forumTopics && forumTopics.length === 0 && (
+                                            <div className="text-[10px] text-white/35">
+                                                Бот еще не видел топики этой группы. Напишите любое сообщение в нужном топике или используйте ручной ID.
+                                            </div>
+                                        )}
+                                    </GlassCard>
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -242,6 +435,12 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                         value={endDate}
                                         onChange={e => setEndDate(e.target.value)}
                                     />
+                                    {endDateInvalid && (
+                                        <div className="mt-1 text-[10px] text-red-300">Некорректный формат даты.</div>
+                                    )}
+                                    {endDateInPast && (
+                                        <div className="mt-1 text-[10px] text-red-300">Дата окончания должна быть в будущем.</div>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="form-label">Метод выбора</label>
@@ -257,7 +456,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                             </div>
                         </div>
 
-                        <Button onClick={nextStep} disabled={!title || !channelId || !endDate} className="w-full">
+                        <Button onClick={nextStep} disabled={hasStep1ValidationErrors || manualThreadIdMissing || manualThreadIdInvalid} className="w-full">
                             Далее <ChevronRight size={18} className="ml-1" />
                         </Button>
                     </motion.div>
@@ -435,15 +634,137 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                                 {!youtubeChannels?.length && (
                                                     <div className="mt-1 text-[8px] text-red-400">Сначала добавьте каналы в настройках</div>
                                                 )}
+                                                {youtubeChannelMissing && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Выберите YouTube-канал для этого условия.</div>
+                                                )}
                                             </div>
                                             <div>
                                                 <label className="form-label text-[10px]">Минимум дней подписки (0 - для новых)</label>
                                                 <input
                                                     type="number"
+                                                    min={0}
                                                     className="form-input py-2 text-xs"
                                                     value={youtubeDays}
                                                     onChange={e => setYoutubeDays(parseInt(e.target.value) || 0)}
                                                 />
+                                                {youtubeDaysInvalid && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </GlassCard>
+                            </div>
+
+                            {/* Twitch Condition */}
+                            <div className="space-y-3">
+                                <label className="form-label">Условие Twitch</label>
+                                <GlassCard className={`p-4 transition-all ${requireTwitch ? 'border-violet-500/20 bg-violet-500/5' : ''}`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center space-x-3">
+                                            <div className={`p-2 rounded-lg ${requireTwitch ? 'bg-violet-500/20 text-violet-400' : 'bg-white/10 text-white/40'}`}>
+                                                <Twitch size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold">Фолловинг Twitch</div>
+                                                <div className="text-[10px] text-white/40">Требовать от участников</div>
+                                            </div>
+                                        </div>
+                                        <div
+                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireTwitch ? 'bg-violet-500' : 'bg-white/20'}`}
+                                            onClick={() => setRequireTwitch(!requireTwitch)}
+                                        >
+                                            <motion.div animate={{ x: requireTwitch ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
+                                        </div>
+                                    </div>
+
+                                    {requireTwitch && (
+                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
+                                            <div>
+                                                <label className="form-label text-[10px]">Twitch канал (логин или ID)</label>
+                                                <input
+                                                    className="form-input py-2 text-xs"
+                                                    value={twitchChannelId}
+                                                    onChange={e => setTwitchChannelId(e.target.value)}
+                                                    placeholder="например: se1dhe"
+                                                />
+                                                {twitchChannelMissing && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Укажите Twitch-канал для проверки фолловинга.</div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="form-label text-[10px]">Минимум дней фолловинга</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    className="form-input py-2 text-xs"
+                                                    value={twitchDays}
+                                                    onChange={e => setTwitchDays(parseInt(e.target.value) || 0)}
+                                                />
+                                                {twitchDaysInvalid && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </GlassCard>
+                            </div>
+
+                            {/* Kick Condition */}
+                            <div className="space-y-3">
+                                <label className="form-label">Условие Kick</label>
+                                <GlassCard className={`p-4 transition-all ${requireKick ? 'border-emerald-500/20 bg-emerald-500/5' : ''}`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center space-x-3">
+                                            <div className={`p-2 rounded-lg ${requireKick ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'}`}>
+                                                <Gamepad2 size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold">Фолловинг Kick</div>
+                                                <div className="text-[10px] text-white/40">Требовать от участников</div>
+                                            </div>
+                                        </div>
+                                        <div
+                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireKick ? 'bg-emerald-500' : 'bg-white/20'}`}
+                                            onClick={() => setRequireKick(!requireKick)}
+                                        >
+                                            <motion.div animate={{ x: requireKick ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
+                                        </div>
+                                    </div>
+
+                                    {requireKick && (
+                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
+                                            <div>
+                                                <label className="form-label text-[10px]">Kick канал</label>
+                                                <select
+                                                    className="form-select text-xs py-2 bg-emerald-500/5 border-emerald-500/20 focus:border-emerald-500/40"
+                                                    value={kickChannelId}
+                                                    onChange={e => setKickChannelId(e.target.value)}
+                                                >
+                                                    <option value="">Выберите канал...</option>
+                                                    {kickChannels?.map(c => (
+                                                        <option key={c.channel_id} value={c.channel_id}>{c.title}</option>
+                                                    ))}
+                                                </select>
+                                                {!kickChannels?.length && (
+                                                    <div className="mt-1 text-[8px] text-emerald-300">Сначала добавьте Kick каналы в разделе «Каналы».</div>
+                                                )}
+                                                {kickChannelMissing && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Укажите Kick-канал для проверки фолловинга.</div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="form-label text-[10px]">Минимум дней фолловинга</label>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    className="form-input py-2 text-xs"
+                                                    value={kickDays}
+                                                    onChange={e => setKickDays(parseInt(e.target.value) || 0)}
+                                                />
+                                                {kickDaysInvalid && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
+                                                )}
                                             </div>
                                         </motion.div>
                                     )}
@@ -453,7 +774,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
 
                         <div className="flex space-x-3">
                             <Button variant="secondary" onClick={prevStep} className="flex-1" disabled={isSubmitting}>Назад</Button>
-                            <Button onClick={handleSubmit} isLoading={isSubmitting} className="flex-[2]">Создать конкурс</Button>
+                            <Button onClick={handleSubmit} isLoading={isSubmitting} disabled={hasStep3ValidationErrors} className="flex-[2]">Создать конкурс</Button>
                         </div>
                     </motion.div>
                 )}

@@ -39,8 +39,19 @@ class ParticipantService:
         existing = await self.get_participant(contest_id, user_id)
         if existing:
             return None
-        
-        # Получаем следующий номер регистрации
+
+        # Блокируем запись конкурса, чтобы избежать гонок при вычислении номера регистрации.
+        await self.db.execute(
+            select(Contest.id)
+            .where(Contest.id == contest_id)
+            .with_for_update()
+        )
+
+        # Повторяем проверку после получения блокировки.
+        existing = await self.get_participant(contest_id, user_id)
+        if existing:
+            return None
+
         registration_number = await self.get_next_registration_number(contest_id)
         
         participant = Participant(
@@ -100,4 +111,3 @@ class ParticipantService:
             .order_by(Participant.registration_number)
         )
         return list(result.scalars().all())
-

@@ -3,7 +3,7 @@ API роуты для OAuth авторизации через YouTube
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
 from fastapi.responses import HTMLResponse
-from typing import Optional, Dict
+from typing import Optional
 import secrets
 import logging
 import httpx
@@ -18,39 +18,19 @@ from sqlalchemy import select
 from shared.config import config
 from database.db import get_db
 from database.models import YouTubeCredentials
+from shared.services.redis_service import (
+    store_oauth_state,
+    consume_oauth_state,
+    store_completed_oauth_auth,
+    get_completed_oauth_auth,
+)
 
 router = APIRouter(prefix="/api/youtube", tags=["youtube"])
 logger = logging.getLogger(__name__)
 
-# Временные хранилища (в продакшене использовать Redis)
-oauth_states: Dict[str, dict] = {}
-completed_auths: Dict[int, dict] = {}
-
 # Константы
 STATE_EXPIRATION_MINUTES = 10
 YOUTUBE_SCOPES = ['https://www.googleapis.com/auth/youtube.readonly']
-
-
-def cleanup_expired_data():
-    """Очистка устаревших данных"""
-    current_time = datetime.now()
-    expiration_delta = timedelta(minutes=STATE_EXPIRATION_MINUTES)
-    
-    # Очистка oauth_states
-    expired_states = [
-        state for state, data in oauth_states.items()
-        if current_time - data.get('created_at', current_time) > expiration_delta
-    ]
-    for state in expired_states:
-        oauth_states.pop(state, None)
-    
-    # Очистка completed_auths
-    expired_auths = [
-        user_id for user_id, data in completed_auths.items()
-        if current_time - data.get('timestamp', current_time) > expiration_delta
-    ]
-    for user_id in expired_auths:
-        completed_auths.pop(user_id, None)
 
 
 def get_redirect_uri() -> str:
@@ -88,7 +68,7 @@ async def exchange_code_for_token(code: str) -> dict:
         response = await client.post(token_url, data=token_data)
     
     if response.status_code != 200:
-        logger.error(f"Token exchange failed: {response.text}")
+        logger.error("YouTube token exchange failed: status=%s body=%s", response.status_code, response.text[:500])
         raise HTTPException(
             status_code=500,
             detail=f"Failed to exchange code for token: {response.text}"
@@ -315,18 +295,16 @@ async def youtube_auth(
             detail="YouTube OAuth не настроен на сервере"
         )
     
-    cleanup_expired_data()
-    
     try:
         # Генерируем уникальный state для защиты от CSRF
         state = secrets.token_urlsafe(32)
-        
-        # Сохраняем данные состояния
-        oauth_states[state] = {
-            'contest_id': contest_id,
-            'user_id': user_id,
-            'created_at': datetime.now()
-        }
+
+        await store_oauth_state(
+            state=state,
+            contest_id=contest_id,
+            user_id=user_id,
+            ttl_seconds=STATE_EXPIRATION_MINUTES * 60,
+        )
         
         # Генерируем URL авторизации
         authorization_url = generate_oauth_url(state)
@@ -378,17 +356,15 @@ async def youtube_callback(
             "Попробуйте начать авторизацию заново"
         )
     
-    # Проверка state
-    if state not in oauth_states:
+    state_data = await consume_oauth_state(state)
+    if not state_data:
         logger.error(f"Invalid or expired state: {state[:10]}...")
         return render_error_page(
             "Недействительная сессия",
             "Сессия авторизации истекла или недействительна",
             "Попробуйте начать авторизацию заново"
         )
-    
-    # Извлекаем данные состояния
-    state_data = oauth_states.pop(state)
+
     contest_id = state_data['contest_id']
     user_id = state_data['user_id']
     
@@ -471,13 +447,13 @@ async def youtube_callback(
         
         await db.commit()
         
-        # Сохраняем завершенную авторизацию для polling (временное хранилище)
-        completed_auths[user_id] = {
-            'channel_id': channel_id,
-            'channel_title': channel_title,
-            'contest_id': contest_id,
-            'timestamp': datetime.now()
-        }
+        await store_completed_oauth_auth(
+            user_id=user_id,
+            contest_id=contest_id,
+            channel_id=channel_id,
+            channel_title=channel_title,
+            ttl_seconds=STATE_EXPIRATION_MINUTES * 60,
+        )
         
         logger.info(f"OAuth completed successfully for user {user_id}")
         
@@ -494,8 +470,7 @@ async def youtube_callback(
         
         # Формируем URL для редиректа обратно на страницу регистрации
         if bot_username:
-            # Используем startapp для открытия WebApp напрямую
-            redirect_url = f"https://t.me/{bot_username}?startapp=contest_{contest_id}"
+            redirect_url = config.build_mini_app_link(bot_username, f"contest_{contest_id}")
         else:
             # Fallback: используем прямой URL (если startapp не работает)
             redirect_url = f"{config.webapp_url}?tgWebAppData="
@@ -567,8 +542,6 @@ async def check_auth_status(
     Используется для polling со стороны клиента.
     Сначала проверяет БД, потом временное хранилище.
     """
-    cleanup_expired_data()
-    
     # Сначала проверяем БД на наличие сохраненных credentials
     result = await db.execute(
         select(YouTubeCredentials).where(YouTubeCredentials.user_id == user_id)
@@ -594,17 +567,14 @@ async def check_auth_status(
             'channel_title': channel_title
         }
     
-    # Если в БД нет, проверяем временное хранилище
-    if user_id in completed_auths:
-        auth_data = completed_auths[user_id]
-        
-        # Проверяем соответствие contest_id
-        if auth_data.get('contest_id') == contest_id:
-            return {
-                'authenticated': True,
-                'channel_id': auth_data['channel_id'],
-                'channel_title': auth_data['channel_title']
-            }
+    # Если в БД нет, проверяем временное хранилище в Redis
+    auth_data = await get_completed_oauth_auth(user_id)
+    if auth_data and auth_data.get('contest_id') == contest_id:
+        return {
+            'authenticated': True,
+            'channel_id': auth_data['channel_id'],
+            'channel_title': auth_data['channel_title']
+        }
     
     return {'authenticated': False}
 

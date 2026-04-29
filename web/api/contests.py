@@ -5,22 +5,55 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime
+import logging
 from database.db import get_db
 from database.models.contest import ContestStatus
 from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
 from shared.services.telegram_service import TelegramService
+from shared.services.redis_service import get_cached_channel_invite_link, cache_channel_invite_link
 from aiogram import Bot
 from shared.config import config
+from shared.i18n import day_unit, normalize_language, translate
 
 router = APIRouter(prefix="/api/contests", tags=["contests"])
+logger = logging.getLogger(__name__)
 
 
-async def get_telegram_service() -> TelegramService:
+async def get_telegram_service():
     """Получить сервис Telegram"""
     bot = Bot(token=config.bot_token)
-    return TelegramService(bot)
+    try:
+        yield TelegramService(bot)
+    finally:
+        await bot.session.close()
+
+
+async def _resolve_invite_link_cached(
+    telegram_service: TelegramService,
+    channel_id: int,
+    invite_name: str,
+) -> Optional[str]:
+    """
+    Получить invite-ссылку канала с кэшированием в Redis.
+    """
+    cached = await get_cached_channel_invite_link(channel_id)
+    if cached:
+        return cached
+
+    try:
+        invite = await telegram_service.bot.create_chat_invite_link(
+            chat_id=channel_id,
+            name=invite_name,
+            creates_join_request=False,
+        )
+        invite_link = getattr(invite, "invite_link", None)
+        if invite_link:
+            await cache_channel_invite_link(channel_id, invite_link)
+        return invite_link
+    except Exception:
+        return None
 
 
 @router.get("/{contest_id}")
@@ -94,6 +127,7 @@ async def get_contest(
         "id": contest.id,
         "title": contest.title,
         "description": contest.description,
+        "language": normalize_language(contest.language),
         "channel_id": contest.channel_id,
         "channel_title": contest.channel.channel_title if contest.channel else None,
         "end_date": contest.end_date.isoformat(),
@@ -120,7 +154,11 @@ async def get_contest(
             for sponsor in contest.sponsors
         ],
         "youtube_channel_id": contest.youtube_channel_id,
-        "youtube_subscription_days_required": contest.youtube_subscription_days_required
+        "youtube_subscription_days_required": contest.youtube_subscription_days_required,
+        "twitch_channel_id": contest.twitch_channel_id,
+        "twitch_follow_days_required": contest.twitch_follow_days_required,
+        "kick_channel_id": contest.kick_channel_id,
+        "kick_follow_days_required": contest.kick_follow_days_required,
     }
 
 
@@ -151,6 +189,7 @@ async def get_contest_info(
         "id": contest.id,
         "title": contest.title,
         "description": contest.description,
+        "language": normalize_language(contest.language),
         "prize_count": contest.prize_count,
         "participants_count": participants_count,
         "image_url": contest.image_path,  # Фронтенд ожидает image_url
@@ -176,6 +215,10 @@ async def get_contest_info(
         ],
         "youtube_channel_id": contest.youtube_channel_id,
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
+        "twitch_channel_id": contest.twitch_channel_id,
+        "twitch_follow_days_required": contest.twitch_follow_days_required,
+        "kick_channel_id": contest.kick_channel_id,
+        "kick_follow_days_required": contest.kick_follow_days_required,
         "image_path": contest.image_path
     }
 
@@ -221,10 +264,35 @@ async def check_subscription(
                 target_channel_id=contest.youtube_channel_id,
                 db=db
             )
+
+    twitch_subscribed = None
+    if contest.twitch_channel_id:
+        from web.api.twitch_auth import check_twitch_subscription, get_user_credentials as get_twitch_credentials
+        twitch_credentials = await get_twitch_credentials(user_id, db)
+        if twitch_credentials:
+            twitch_subscribed = await check_twitch_subscription(
+                user_id=user_id,
+                target_channel_id=contest.twitch_channel_id,
+                days_required=contest.twitch_follow_days_required,
+                db=db,
+            )
+
+    kick_subscribed = None
+    if contest.kick_channel_id:
+        from web.api.kick_auth import get_kick_subscription_status
+        kick_status = await get_kick_subscription_status(
+            user_id=user_id,
+            target_channel_id=contest.kick_channel_id,
+            days_required=contest.kick_follow_days_required,
+            db=db,
+        )
+        kick_subscribed = kick_status["met"] if kick_status["connected"] else None
     
     return {
         "subscriptions": subscriptions,
-        "youtube_subscribed": youtube_subscribed
+        "youtube_subscribed": youtube_subscribed,
+        "twitch_subscribed": twitch_subscribed,
+        "kick_subscribed": kick_subscribed,
     }
 
 
@@ -273,15 +341,15 @@ async def auto_check(
     main_chat = await telegram_service.get_chat_info(contest.channel_id)
     main_invite = None
     if not (main_chat and main_chat.get('username')):
-        try:
-            invite = await telegram_service.bot.create_chat_invite_link(chat_id=contest.channel_id, name=f"{contest.title} invite", creates_join_request=False)
-            main_invite = getattr(invite, "invite_link", None)
-        except Exception:
-            main_invite = None
+        main_invite = await _resolve_invite_link_cached(
+            telegram_service=telegram_service,
+            channel_id=contest.channel_id,
+            invite_name=f"{contest.title} invite",
+        )
     conditions.append({
         "type": "telegram",
         "id": contest.channel_id,
-        "title": main_chat['title'] if main_chat else "Основной канал",
+        "title": main_chat['title'] if main_chat else translate(contest.language, "main_channel"),
         "username": main_chat['username'] if main_chat else None,
         "invite_link": main_invite,
         "met": await telegram_service.check_subscription(user_id, contest.channel_id)
@@ -292,15 +360,15 @@ async def auto_check(
         for sponsor in contest.sponsors:
             invite_link = None
             if not sponsor.channel_username:
-                try:
-                    inv = await telegram_service.bot.create_chat_invite_link(chat_id=sponsor.channel_id, name=f"{contest.title} sponsor", creates_join_request=False)
-                    invite_link = getattr(inv, "invite_link", None)
-                except Exception:
-                    invite_link = None
+                invite_link = await _resolve_invite_link_cached(
+                    telegram_service=telegram_service,
+                    channel_id=sponsor.channel_id,
+                    invite_name=f"{contest.title} sponsor",
+                )
             conditions.append({
                 "type": "telegram",
                 "id": sponsor.channel_id,
-                "title": sponsor.channel_title or "Канал спонсора",
+                "title": sponsor.channel_title or translate(contest.language, "sponsor_channel"),
                 "username": sponsor.channel_username,
                 "invite_link": invite_link,
                 "met": await telegram_service.check_subscription(user_id, sponsor.channel_id)
@@ -323,11 +391,51 @@ async def auto_check(
         youtube_condition = {
             "type": "youtube",
             "id": contest.youtube_channel_id,
-            "title": "YouTube канал",
+            "title": translate(contest.language, "youtube_channel"),
             "met": youtube_met,
             "connected": credentials is not None
         }
         conditions.append(youtube_condition)
+
+    twitch_condition = None
+    if contest.twitch_channel_id:
+        from web.api.twitch_auth import check_twitch_subscription, get_user_credentials as get_twitch_credentials
+        twitch_credentials = await get_twitch_credentials(user_id, db)
+        twitch_met = False
+        if twitch_credentials:
+            twitch_met = await check_twitch_subscription(
+                user_id=user_id,
+                target_channel_id=contest.twitch_channel_id,
+                days_required=contest.twitch_follow_days_required,
+                db=db,
+            )
+        twitch_condition = {
+            "type": "twitch",
+            "id": contest.twitch_channel_id,
+            "title": translate(contest.language, "twitch_channel"),
+            "met": twitch_met,
+            "connected": twitch_credentials is not None,
+        }
+        conditions.append(twitch_condition)
+
+    kick_condition = None
+    if contest.kick_channel_id:
+        from web.api.kick_auth import get_kick_subscription_status
+        kick_status = await get_kick_subscription_status(
+            user_id=user_id,
+            target_channel_id=contest.kick_channel_id,
+            days_required=contest.kick_follow_days_required,
+            db=db,
+        )
+        kick_condition = {
+            "type": "kick",
+            "id": contest.kick_channel_id,
+            "title": translate(contest.language, "kick_channel"),
+            "met": kick_status["met"],
+            "connected": kick_status["connected"],
+            "verification_status": kick_status["status"],
+        }
+        conditions.append(kick_condition)
         
     all_met = all(c['met'] for c in conditions)
     
@@ -377,9 +485,10 @@ async def register_participant(
     
     if not contest:
         raise HTTPException(status_code=404, detail="Конкурс не найден")
+    language = normalize_language(contest.language)
     
     if contest.status.value != "active":
-        raise HTTPException(status_code=400, detail="Конкурс не активен")
+        raise HTTPException(status_code=400, detail=translate(language, "contest_not_active"))
     
     # Проверяем подписки на Telegram каналы
     channel_ids = [contest.channel_id]
@@ -390,7 +499,7 @@ async def register_participant(
     all_subscribed = all(subscriptions.values())
     
     if not all_subscribed:
-        raise HTTPException(status_code=400, detail="Необходимо подписаться на все каналы")
+        raise HTTPException(status_code=400, detail=translate(language, "telegram_required"))
     
     # Проверяем подписку на YouTube канал, если требуется
     if contest.youtube_channel_id:
@@ -404,7 +513,7 @@ async def register_participant(
         if not credentials:
             raise HTTPException(
                 status_code=400,
-                detail="Для участия в конкурсе необходимо авторизоваться через YouTube"
+                detail=translate(language, "youtube_auth_required")
             )
         
         # Получаем YouTube channel_id пользователя
@@ -416,7 +525,7 @@ async def register_participant(
         if not user_youtube_creds or not user_youtube_creds.youtube_channel_id:
             raise HTTPException(
                 status_code=400,
-                detail="Не удалось определить ваш YouTube канал"
+                detail=translate(language, "youtube_channel_unknown")
             )
         
         user_youtube_channel_id = user_youtube_creds.youtube_channel_id
@@ -443,7 +552,7 @@ async def register_participant(
             if existing_participant:
                 raise HTTPException(
                     status_code=400,
-                    detail="Этот YouTube канал уже используется другим пользователем для участия в этом конкурсе"
+                    detail=translate(language, "youtube_channel_duplicate")
                 )
         
         # Проверяем подписку
@@ -458,14 +567,93 @@ async def register_participant(
             if days_required > 0:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Необходимо быть подписанным на YouTube канал не менее {days_required} дней"
+                    detail=translate(
+                        language,
+                        "youtube_subscribe_days_required",
+                        days=days_required,
+                        unit=day_unit(language, days_required),
+                    )
                 )
             else:
                 raise HTTPException(
                     status_code=400,
-                    detail="Необходимо быть подписанным на указанный YouTube канал"
+                    detail=translate(language, "youtube_subscribe_required")
                 )
     
+    # Проверяем фолловинг Twitch, если требуется
+    if contest.twitch_channel_id:
+        from web.api.twitch_auth import check_twitch_subscription, get_user_credentials as get_twitch_credentials
+
+        twitch_credentials = await get_twitch_credentials(user_id, db)
+        if not twitch_credentials:
+            raise HTTPException(
+                status_code=400,
+                detail=translate(language, "twitch_auth_required")
+            )
+
+        is_following_twitch = await check_twitch_subscription(
+            user_id=user_id,
+            target_channel_id=contest.twitch_channel_id,
+            days_required=contest.twitch_follow_days_required,
+            db=db,
+        )
+        if not is_following_twitch:
+            if contest.twitch_follow_days_required > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=translate(
+                        language,
+                        "twitch_follow_days_required",
+                        days=contest.twitch_follow_days_required,
+                        unit=day_unit(language, contest.twitch_follow_days_required),
+                    )
+                )
+            raise HTTPException(
+                status_code=400,
+                detail=translate(language, "twitch_follow_required")
+            )
+
+    # Проверяем фолловинг Kick, если требуется
+    if contest.kick_channel_id:
+        from web.api.kick_auth import (
+            KICK_STATUS_UNVERIFIED,
+            get_kick_subscription_status,
+        )
+
+        kick_status = await get_kick_subscription_status(
+            user_id=user_id,
+            target_channel_id=contest.kick_channel_id,
+            days_required=contest.kick_follow_days_required,
+            db=db,
+        )
+        if not kick_status["connected"]:
+            raise HTTPException(
+                status_code=400,
+                detail=translate(language, "kick_auth_required")
+            )
+
+        is_following_kick = kick_status["met"]
+        if not is_following_kick:
+            if kick_status["status"] == KICK_STATUS_UNVERIFIED:
+                raise HTTPException(
+                    status_code=400,
+                    detail=translate(language, "kick_follow_unverified")
+                )
+            if contest.kick_follow_days_required > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=translate(
+                        language,
+                        "kick_follow_days_required",
+                        days=contest.kick_follow_days_required,
+                        unit=day_unit(language, contest.kick_follow_days_required),
+                    )
+                )
+            raise HTTPException(
+                status_code=400,
+                detail=translate(language, "kick_follow_required")
+            )
+
     # Извлекаем данные из initData если есть
     first_name = None
     last_name = None
@@ -484,7 +672,7 @@ async def register_participant(
                 if not username:
                     username = user_data.get('username')
         except Exception as e:
-            logger.warning(f"Ошибка парсинга initData: {e}")
+            logger.warning("Ошибка парсинга initData при регистрации в contest_id=%s user_id=%s: %s", contest_id, user_id, e)
 
     # Регистрируем участника
     participant_service = ParticipantService(db)
@@ -497,7 +685,8 @@ async def register_participant(
     )
     
     if not participant:
-        raise HTTPException(status_code=400, detail="Вы уже зарегистрированы в этом конкурсе")
+        logger.info("Повторная регистрация отклонена: contest_id=%s user_id=%s", contest_id, user_id)
+        raise HTTPException(status_code=400, detail=translate(language, "already_registered"))
     
     # Публикуем обновление в Redis для WebSocket
     try:
@@ -512,7 +701,14 @@ async def register_participant(
             "participants_count": participants_count
         }))
     except Exception as e:
-        logger.warning(f"Ошибка при публикации обновления конкурса в Redis: {e}")
+        logger.warning("Ошибка при публикации обновления конкурса в Redis contest_id=%s user_id=%s: %s", contest_id, user_id, e)
+
+    logger.info(
+        "Участник зарегистрирован: contest_id=%s user_id=%s registration_number=%s",
+        contest_id,
+        user_id,
+        participant.registration_number,
+    )
     
     return {
         "registration_number": participant.registration_number,
@@ -644,6 +840,7 @@ async def get_results_info(
     return {
         "contest_title": contest.title,
         "contest_description": contest.description,
+        "language": normalize_language(contest.language),
         "image_url": f"/{contest.image_path}" if contest.image_path else None,
         "end_date": contest.end_date.isoformat(),
         "participants_count": participants_count,
@@ -661,4 +858,3 @@ async def get_results_info(
             for p in sorted(winners, key=lambda x: x.place)
         ] if winners else []
     }
-

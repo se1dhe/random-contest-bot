@@ -94,7 +94,4 @@ def is_admin(user_id: Optional[int]) -> bool:
     @param user_id ID пользователя
     @return True если администратор
     """
-    if not user_id:
-        return False
-    return user_id == config.admin_id
-
+    return config.is_admin(user_id)

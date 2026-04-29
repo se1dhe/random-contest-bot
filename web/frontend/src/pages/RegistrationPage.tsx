@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -7,10 +7,11 @@ import confetti from 'canvas-confetti';
 import { useTelegram } from '../hooks/useTelegram';
 import { GlassCard, ConditionItem } from '../components/ui/Cards';
 import { Button } from '../components/ui/Button';
-import { Trophy, Users, Clock, CheckCircle, Crown, Gift, Calendar } from 'lucide-react';
+import { Trophy, Users, Clock, CheckCircle, Crown, Gift, Calendar, RefreshCw, ExternalLink } from 'lucide-react';
 import { CountdownTimer } from '../components/ui/CountdownTimer';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { normalizeLanguage, t, type ContestLanguage } from '../i18n';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -20,6 +21,7 @@ interface ContestInfo {
     id: number;
     title: string;
     description: string;
+    language: ContestLanguage;
     image_url: string | null;
     end_date: string;
     prize_count: number;
@@ -31,13 +33,14 @@ interface AutoCheckResponse {
     can_register: boolean;
     is_registered: boolean;
     conditions: Array<{
-        type: 'telegram' | 'youtube';
+        type: 'telegram' | 'youtube' | 'twitch' | 'kick';
         id: string | number;
         title: string;
         username?: string | null;
         invite_link?: string | null;
         met: boolean;
         connected?: boolean;
+        verification_status?: string;
     }>;
     participants_count?: number;
 }
@@ -53,6 +56,7 @@ interface Winner {
 interface ResultInfo {
     contest_title: string;
     contest_description?: string | null;
+    language?: ContestLanguage;
     image_url?: string | null;
     end_date: string;
     participants_count: number;
@@ -67,15 +71,17 @@ interface ResultInfo {
 
 export const RegistrationPage: React.FC = () => {
     const [searchParams] = useSearchParams();
-    const { initData, hapticFeedback, tg, userId } = useTelegram();
+    const { initData, hapticFeedback, tg, userId, openLink } = useTelegram();
     const [isRegistering, setIsRegistering] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [registerError, setRegisterError] = useState<string | null>(null);
     const [liveParticipantsCount, setLiveParticipantsCount] = useState<number | null>(null);
     const [contestEnded, setContestEnded] = useState(false);
     const [winners, setWinners] = useState<Winner[]>([]);
     const [revealedWinners, setRevealedWinners] = useState<number>(0);
     const [drawComplete, setDrawComplete] = useState(false);
     const [prizesOpen, setPrizesOpen] = useState(false);
+    const [pendingExternalAuth, setPendingExternalAuth] = useState<'youtube' | 'twitch' | 'kick' | null>(null);
 
     const contestId = searchParams.get('contest_id');
 
@@ -102,6 +108,22 @@ export const RegistrationPage: React.FC = () => {
         },
         enabled: !!contestId && !!initData && !!userId,
     });
+    const language = normalizeLanguage(contest?.language || resultsInfo?.language);
+
+    const getConditionStatusText = (condition: AutoCheckResponse['conditions'][number]) => {
+        if (pendingExternalAuth === condition.type && !condition.met) {
+            return condition.connected ? t(language, 'checkingConnection') : t(language, 'waitingAuth');
+        }
+        if (condition.type === 'kick' && !condition.met) {
+            if (condition.verification_status === 'unverified') {
+                return t(language, 'conditionUnverified')
+            }
+            if (condition.verification_status === 'not_following') {
+                return t(language, 'followRequired')
+            }
+        }
+        return undefined;
+    };
 
     // Synchronize live count with initial data
     useEffect(() => {
@@ -124,8 +146,25 @@ export const RegistrationPage: React.FC = () => {
         refetchInterval: 3000,
     });
 
+    const pendingExternalCondition = useMemo(() => {
+        if (!pendingExternalAuth || !status?.conditions) {
+            return null;
+        }
+        return status.conditions.find((condition) => condition.type === pendingExternalAuth) || null;
+    }, [pendingExternalAuth, status?.conditions]);
+
+    useEffect(() => {
+        if (!pendingExternalAuth || !pendingExternalCondition) {
+            return;
+        }
+        if (pendingExternalCondition.connected || pendingExternalCondition.met) {
+            setPendingExternalAuth(null);
+        }
+    }, [pendingExternalAuth, pendingExternalCondition]);
+
     const handleRegister = React.useCallback(async () => {
         setIsRegistering(true);
+        setRegisterError(null);
         try {
             await axios.post(`/api/contests/${contestId}/register`, {}, {
                 headers: { 'X-Telegram-Init-Data': initData },
@@ -135,10 +174,13 @@ export const RegistrationPage: React.FC = () => {
             refetchStatus();
         } catch (err) {
             console.error('Registration failed', err);
+            const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+            setRegisterError(detail || t(language, 'registrationError'));
+            hapticFeedback('rigid');
         } finally {
             setIsRegistering(false);
         }
-    }, [contestId, initData, userId, hapticFeedback, refetchStatus]);
+    }, [contestId, initData, userId, hapticFeedback, refetchStatus, language]);
 
     const handleSuccess = React.useCallback(() => {
         setIsSuccess(true);
@@ -304,16 +346,39 @@ export const RegistrationPage: React.FC = () => {
                 else url = `https://youtube.com/@${yid}`;
                 tg.openLink(url);
             } else {
+                setPendingExternalAuth('youtube');
                 tg.openLink(`${window.location.origin}/api/youtube/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`);
             }
+        } else if (condition.type === 'twitch') {
+            const target = condition.id.toString().trim();
+            if (condition.connected) {
+                const url = target.startsWith('http') ? target : `https://www.twitch.tv/${target}`;
+                tg.openLink(url);
+            } else {
+                setPendingExternalAuth('twitch');
+                tg.openLink(`${window.location.origin}/api/twitch/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`);
+            }
+        } else if (condition.type === 'kick') {
+            const target = condition.id.toString().trim();
+            if (condition.connected) {
+                const url = target.startsWith('http') ? target : `https://kick.com/${target}`;
+                tg.openLink(url);
+            } else {
+                setPendingExternalAuth('kick');
+                openLink(
+                    `${window.location.origin}/api/kick/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`,
+                    { try_browser: 'chrome' }
+                );
+            }
         }
+        setRegisterError(null);
     };
 
     if (isContestLoading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
                 <div className="spinner" />
-                <p className="text-white/40 text-sm animate-pulse">Загружаем информацию о конкурсе...</p>
+                <p className="text-white/40 text-sm animate-pulse">{t(language, 'loadingContest')}</p>
             </div>
         );
     }
@@ -357,7 +422,7 @@ export const RegistrationPage: React.FC = () => {
                                 <div className="w-1 h-1 rounded-full bg-white/20" />
                                 <div className="flex items-center gap-1.5">
                                     <Users size={14} />
-                                    <span>{resultsInfo.participants_count} участников</span>
+                                    <span>{resultsInfo.participants_count} {t(language, 'participants')}</span>
                                 </div>
                             </div>
                         </div>
@@ -365,7 +430,7 @@ export const RegistrationPage: React.FC = () => {
                     <section className="space-y-4">
                         <div className="flex items-center justify-between px-1">
                             <h2 className="text-sm font-bold uppercase tracking-wider text-white/40">
-                                Победители
+                                {t(language, 'winners')}
                             </h2>
                         </div>
                         <div className="space-y-3">
@@ -403,7 +468,7 @@ export const RegistrationPage: React.FC = () => {
                                                         transition={{ delay: 0.3 }}
                                                         className="font-bold text-white leading-tight"
                                                     >
-                                                        {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
+                                                        {winner.username ? `@${winner.username}` : (winner.firstname || t(language, 'winnerFallback'))}
                                                     </motion.div>
                                                     <motion.span
                                                         initial={{ x: -10, opacity: 0 }}
@@ -434,7 +499,7 @@ export const RegistrationPage: React.FC = () => {
                         animate={{ opacity: 1, y: 0 }}
                         className="text-center text-xs text-white/30 pt-4"
                     >
-                        🎉 Поздравляем всех победителей!
+                        {t(language, 'congratsWinners')}
                     </motion.footer>
                 </div>
             );
@@ -445,12 +510,12 @@ export const RegistrationPage: React.FC = () => {
                     <Trophy size={40} className="opacity-50" />
                 </div>
                 <div className="space-y-2">
-                    <h2 className="text-xl font-bold">Конкурс недоступен</h2>
+                    <h2 className="text-xl font-bold">{t(language, 'contestUnavailableTitle')}</h2>
                     <p className="text-sm text-white/40 italic">
-                        Этот конкурс еще не опубликован, завершен или не существует.
+                        {t(language, 'contestUnavailableText')}
                     </p>
                 </div>
-                <Button variant="secondary" onClick={() => tg.close()}>Закрыть</Button>
+                <Button variant="secondary" onClick={() => tg.close()}>{t(language, 'close')}</Button>
             </div>
         );
     }
@@ -487,14 +552,14 @@ export const RegistrationPage: React.FC = () => {
                             <Trophy size={32} />
                         </motion.div>
                         <h1 className="text-2xl font-bold tracking-tight">{contest.title}</h1>
-                        <p className="text-sm text-white/60">🎉 Розыгрыш завершён!</p>
+                        <p className="text-sm text-white/60">{t(language, 'drawFinished')}</p>
                     </div>
                 </header>
 
                 <section className="space-y-4">
                     <div className="flex items-center justify-between px-1">
                         <h2 className="text-sm font-bold uppercase tracking-wider text-white/40">
-                            Победители
+                            {t(language, 'winners')}
                         </h2>
                         {!drawComplete && (
                             <motion.div
@@ -502,7 +567,7 @@ export const RegistrationPage: React.FC = () => {
                                 transition={{ duration: 1.5, repeat: Infinity }}
                                 className="text-xs text-primary font-medium"
                             >
-                                Объявление результатов...
+                                {t(language, 'announcingResults')}
                             </motion.div>
                         )}
                     </div>
@@ -550,7 +615,7 @@ export const RegistrationPage: React.FC = () => {
                                                     transition={{ delay: 0.3 }}
                                                     className="font-bold text-white leading-tight hover:text-primary transition-colors"
                                                 >
-                                                    {winner.username ? `@${winner.username}` : (winner.firstname || 'Участник')}
+                                                    {winner.username ? `@${winner.username}` : (winner.firstname || t(language, 'winnerFallback'))}
                                                 </motion.div>
                                                 <motion.span
                                                     initial={{ x: -10, opacity: 0 }}
@@ -583,8 +648,8 @@ export const RegistrationPage: React.FC = () => {
                         animate={{ opacity: 1, y: 0 }}
                         className="text-center pt-4"
                     >
-                        <p className="text-xs text-white/30 mb-4">🎉 Поздравляем всех победителей!</p>
-                        <Button variant="secondary" onClick={() => tg.close()}>Закрыть</Button>
+                        <p className="text-xs text-white/30 mb-4">{t(language, 'congratsWinners')}</p>
+                        <Button variant="secondary" onClick={() => tg.close()}>{t(language, 'close')}</Button>
                     </motion.div>
                 )}
             </div>
@@ -606,7 +671,7 @@ export const RegistrationPage: React.FC = () => {
                     <div className="flex items-center space-x-4 text-white/60 text-xs">
                         <div className="flex items-center space-x-1.5">
                             <Users size={14} className="text-primary" />
-                            <span>{liveParticipantsCount ?? contest.participants_count} участников</span>
+                            <span>{liveParticipantsCount ?? contest.participants_count} {t(language, 'participants')}</span>
                         </div>
                         <button
                             type="button"
@@ -614,14 +679,14 @@ export const RegistrationPage: React.FC = () => {
                             onClick={() => setPrizesOpen(true)}
                         >
                             <Trophy size={14} className="text-amber-400" />
-                            <span>{contest.prize_count} призов</span>
+                            <span>{contest.prize_count} {t(language, 'prizes')}</span>
                         </button>
                     </div>
                 </div>
             </header>
 
             {contest.end_date && (
-                <CountdownTimer endDate={contest.end_date} onEnd={handleCountdownEnd} />
+                <CountdownTimer endDate={contest.end_date} onEnd={handleCountdownEnd} language={language} />
             )}
 
             <AnimatePresence mode="wait">
@@ -636,10 +701,10 @@ export const RegistrationPage: React.FC = () => {
                             <CheckCircle size={32} />
                         </div>
                         <div className="space-y-1">
-                            <h3 className="text-xl font-bold text-emerald-400">Вы участвуете!</h3>
-                            <p className="text-xs text-white/60">Все условия выполнены. Ожидайте результатов розыгрыша.</p>
+                            <h3 className="text-xl font-bold text-emerald-400">{t(language, 'youParticipate')}</h3>
+                            <p className="text-xs text-white/60">{t(language, 'allConditionsMet')}</p>
                         </div>
-                        <Button variant="secondary" onClick={() => tg.close()}>Закрыть</Button>
+                        <Button variant="secondary" onClick={() => tg.close()}>{t(language, 'close')}</Button>
                     </motion.div>
                 ) : (
                     <motion.div
@@ -650,7 +715,52 @@ export const RegistrationPage: React.FC = () => {
                         className="space-y-6"
                     >
                         <section className="space-y-3">
-                            <h2 className="text-sm font-bold uppercase tracking-wider text-white/40 px-1">Условия участия</h2>
+                            <h2 className="text-sm font-bold uppercase tracking-wider text-white/40 px-1">{t(language, 'conditionsTitle')}</h2>
+                            {registerError && (
+                                <GlassCard className="p-3 border border-red-500/30 bg-red-500/10 text-red-200 text-xs">
+                                    {registerError}
+                                </GlassCard>
+                            )}
+                            {pendingExternalAuth && (
+                                <GlassCard className="p-4 border border-primary/30 bg-primary/10">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2 text-primary">
+                                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                                                <span className="text-xs font-bold uppercase tracking-[0.24em]">
+                                                    {t(language, 'connectingAccount')}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-semibold text-white">
+                                                    {t(language, 'finishAuth', { service: pendingExternalAuth === 'kick' ? 'Kick' : pendingExternalAuth === 'youtube' ? 'YouTube' : 'Twitch' })}
+                                                </p>
+                                                <p className="text-xs text-white/60">
+                                                    {t(language, 'autoCheckHint')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="shrink-0 px-3 py-2 text-xs"
+                                            onClick={() => {
+                                                setRegisterError(null);
+                                                refetchStatus();
+                                            }}
+                                        >
+                                            <RefreshCw size={14} className="mr-2" />
+                                            {t(language, 'checkAgain')}
+                                        </Button>
+                                    </div>
+                                    {pendingExternalCondition && !pendingExternalCondition.met && pendingExternalCondition.connected && (
+                                        <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                                            <ExternalLink size={14} className="text-primary" />
+                                            {t(language, 'accountConnectedHint')}
+                                        </div>
+                                    )}
+                                </GlassCard>
+                            )}
                             <GlassCard className="p-2 space-y-2">
                                 {status?.conditions.map((condition, idx) => (
                                     <ConditionItem
@@ -659,11 +769,21 @@ export const RegistrationPage: React.FC = () => {
                                         label={condition.title}
                                         isMet={condition.met}
                                         isConnected={condition.connected}
+                                        statusText={getConditionStatusText(condition)}
+                                        actionLabel={
+                                            condition.type === 'kick'
+                                                ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} Kick`
+                                                : condition.type === 'youtube'
+                                                    ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} YouTube`
+                                                    : condition.type === 'twitch'
+                                                        ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} Twitch`
+                                                        : undefined
+                                        }
                                         onAction={() => handleConditionAction(condition)}
                                     />
                                 ))}
                                 {(!status || status.conditions.length === 0) && (
-                                    <p className="p-4 text-center text-white/40 text-sm">Условий пока нет</p>
+                                    <p className="p-4 text-center text-white/40 text-sm">{t(language, 'noConditions')}</p>
                                 )}
                             </GlassCard>
                         </section>
@@ -673,9 +793,9 @@ export const RegistrationPage: React.FC = () => {
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center space-x-2 text-white/80">
                                         <Clock size={16} className="text-primary" />
-                                        <span className="text-sm font-medium">Розыгрыш: {new Date(contest.end_date).toLocaleDateString()}</span>
+                                        <span className="text-sm font-medium">{t(language, 'drawDate')}: {new Date(contest.end_date).toLocaleDateString()}</span>
                                     </div>
-                                    <div className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded">АКТИВЕН</div>
+                                    <div className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded">{t(language, 'active')}</div>
                                 </div>
 
                                 <div className="space-y-3">
@@ -687,7 +807,7 @@ export const RegistrationPage: React.FC = () => {
                                         />
                                     </div>
                                     <p className="text-center text-[10px] text-white/40 uppercase font-bold tracking-widest">
-                                        {status?.can_register ? 'Подготовка к регистрации...' : 'Выполните все условия выше'}
+                                        {status?.can_register ? t(language, 'preparingRegistration') : t(language, 'completeConditions')}
                                     </p>
                                 </div>
                             </GlassCard>
@@ -701,7 +821,7 @@ export const RegistrationPage: React.FC = () => {
                         <div className="p-4 border-b border-white/10 flex items-center justify-between">
                             <div className="flex items-center space-x-2 text-white">
                                 <Trophy size={18} className="text-amber-400" />
-                                <span className="text-sm font-bold">Призы конкурса</span>
+                                <span className="text-sm font-bold">{t(language, 'contestPrizes')}</span>
                             </div>
                             <button
                                 className="text-white/50 hover:text-white transition-colors"
@@ -728,11 +848,11 @@ export const RegistrationPage: React.FC = () => {
                                     </GlassCard>
                                 ))
                             ) : (
-                                <p className="text-white/40 text-sm">Призы не настроены</p>
+                                <p className="text-white/40 text-sm">{t(language, 'prizesNotConfigured')}</p>
                             )}
                         </div>
                         <div className="p-4 border-t border-white/10">
-                            <Button variant="secondary" className="w-full" onClick={() => setPrizesOpen(false)}>Закрыть</Button>
+                            <Button variant="secondary" className="w-full" onClick={() => setPrizesOpen(false)}>{t(language, 'close')}</Button>
                         </div>
                     </div>
                 </div>

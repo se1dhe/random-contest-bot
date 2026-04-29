@@ -2,10 +2,12 @@ import React, { useState, useEffect, memo } from 'react';
 import { Timer } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GlassCard } from './Cards';
+import { t, type ContestLanguage } from '../../i18n';
 
 interface CountdownTimerProps {
     endDate: string;
     onEnd?: () => void;
+    language?: ContestLanguage;
 }
 
 // Memoized unit component to prevent unnecessary re-renders
@@ -31,7 +33,7 @@ const TimeUnit = memo(({ value, label }: { value: number, label: string }) => (
 
 TimeUnit.displayName = 'TimeUnit';
 
-export const CountdownTimer: React.FC<CountdownTimerProps> = ({ endDate, onEnd }) => {
+export const CountdownTimer: React.FC<CountdownTimerProps> = ({ endDate, onEnd, language = 'ru' }) => {
     const [timeLeft, setTimeLeft] = useState<{
         days: number;
         hours: number;
@@ -71,7 +73,7 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({ endDate, onEnd }
             <GlassCard className="p-4 flex items-center justify-center border-red-500/20 bg-red-500/5">
                 <div className="flex items-center gap-2 text-red-500 font-bold uppercase tracking-wider text-xs">
                     <Timer size={16} />
-                    <span>Розыгрыш начался</span>
+                    <span>{t(language, 'drawFinished')}</span>
                 </div>
             </GlassCard>
         );
@@ -84,23 +86,23 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({ endDate, onEnd }
                     <Timer size={20} />
                 </div>
                 <div>
-                    <h4 className="text-sm font-semibold opacity-80">До финала:</h4>
-                    <p className="text-[11px] opacity-50">Живое обновление</p>
+                    <h4 className="text-sm font-semibold opacity-80">{language === 'en' ? 'Until final:' : language === 'uk' ? 'До фіналу:' : 'До финала:'}</h4>
+                    <p className="text-[11px] opacity-50">{language === 'en' ? 'Live update' : language === 'uk' ? 'Живе оновлення' : 'Живое обновление'}</p>
                 </div>
             </div>
 
             <div className="flex gap-2">
                 {timeLeft.days > 0 && (
                     <>
-                        <TimeUnit value={timeLeft.days} label="дн" />
+                        <TimeUnit value={timeLeft.days} label={language === 'en' ? 'd' : language === 'uk' ? 'дн' : 'дн'} />
                         <span className="text-xl font-bold opacity-20 self-start mt-[-2px]">:</span>
                     </>
                 )}
-                <TimeUnit value={timeLeft.hours} label="ч" />
+                <TimeUnit value={timeLeft.hours} label={language === 'en' ? 'h' : language === 'uk' ? 'г' : 'ч'} />
                 <span className="text-xl font-bold opacity-20 self-start mt-[-2px]">:</span>
-                <TimeUnit value={timeLeft.minutes} label="м" />
+                <TimeUnit value={timeLeft.minutes} label={language === 'en' ? 'm' : 'м'} />
                 <span className="text-xl font-bold opacity-20 self-start mt-[-2px]">:</span>
-                <TimeUnit value={timeLeft.seconds} label="с" />
+                <TimeUnit value={timeLeft.seconds} label={language === 'en' ? 's' : 'с'} />
             </div>
         </div>
     );

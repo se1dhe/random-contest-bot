@@ -1,18 +1,11 @@
 #!/bin/bash
 set -e
 
-echo "Ожидание запуска PostgreSQL..."
-until pg_isready -h postgres -U postgres; do
-  echo "PostgreSQL недоступен - ожидание..."
-  sleep 1
-done
-
-echo "PostgreSQL готов!"
-
-echo "Применение миграций БД..."
-cd /app
-alembic -c database/alembic.ini upgrade head
+if [ "${RUN_MIGRATIONS:-1}" = "1" ]; then
+  echo "Ожидание PostgreSQL и применение миграций БД..."
+  cd /app
+  python scripts/run_migrations.py
+fi
 
 echo "Запуск приложения..."
 exec "$@"
-
