@@ -57,7 +57,7 @@ async def handle_contest_expired(contest_id: int, bot: Bot):
                     
                     # Публикуем результаты в канал
                     from bot.handlers.contest import publish_results_to_channel
-                    webapp_url = f"https://{config.ngrok_domain}" if config.ngrok_enabled and config.ngrok_domain else "http://localhost:8000"
+                    webapp_url = config.webapp_url.rstrip("/")
                     publish_success = await publish_results_to_channel(contest_id, bot, webapp_url)
                     
                     if publish_success:
@@ -111,7 +111,7 @@ async def handle_contest_publish(contest_id: int, bot: Bot):
                 from bot.handlers.contest import publish_contest_to_channel
 
                 logger.info("Запуск отложенной публикации конкурса %s (%s)", contest_id, contest.title)
-                webapp_url = f"https://{config.ngrok_domain}" if config.ngrok_enabled and config.ngrok_domain else "http://localhost:8000"
+                webapp_url = config.webapp_url.rstrip("/")
                 publish_success = await publish_contest_to_channel(contest_id, bot, webapp_url)
                 if publish_success:
                     logger.info("Конкурс %s успешно опубликован по расписанию", contest_id)
@@ -155,7 +155,7 @@ async def handle_results_recovery(contest_id: int, bot: Bot, reason: str) -> Non
             )
             from bot.handlers.contest import publish_results_to_channel
 
-            webapp_url = f"https://{config.ngrok_domain}" if config.ngrok_enabled and config.ngrok_domain else "http://localhost:8000"
+            webapp_url = config.webapp_url.rstrip("/")
             publish_success = await publish_results_to_channel(contest_id, bot, webapp_url)
             if publish_success:
                 logger.info("Восстановительная публикация результатов конкурса %s выполнена успешно", contest_id)

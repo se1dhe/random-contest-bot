@@ -1187,7 +1187,7 @@ async def repair_contest(
             raise HTTPException(status_code=404, detail="Конкурс не найден")
 
         actions: list[str] = []
-        webapp_url = f"https://{config.ngrok_domain}" if config.ngrok_enabled and config.ngrok_domain else config.webapp_url
+        webapp_url = config.webapp_url.rstrip("/")
 
         if contest.status == ContestStatus.ACTIVE and not contest.message_id:
             published = await publish_contest_to_channel(contest_id, bot, webapp_url)

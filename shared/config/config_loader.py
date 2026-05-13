@@ -192,27 +192,6 @@ class Config:
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
     
     @property
-    def ngrok_enabled(self) -> bool:
-        """Включен ли ngrok"""
-        return self.get_bool('ngrok', 'ENABLED')
-    
-    @property
-    def ngrok_authtoken(self) -> str:
-        """Токен ngrok"""
-        return self.get('ngrok', 'NGROK_AUTHTOKEN')
-    
-    @property
-    def ngrok_domain(self) -> Optional[str]:
-        """Домен ngrok"""
-        domain = self.get('ngrok', 'NGROK_DOMAIN', '')
-        return domain if domain else None
-    
-    @property
-    def ngrok_region(self) -> str:
-        """Регион ngrok"""
-        return self.get('ngrok', 'NGROK_REGION', 'eu')
-    
-    @property
     def web_port(self) -> int:
         """Порт веб-сервера"""
         return self.get_int('web', 'WEB_PORT', 8000)

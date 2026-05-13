@@ -79,26 +79,6 @@ services:
     networks:
       - contest_network
 
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: contest_bot_ngrok
-    environment:
-      - TZ=Europe/Kyiv
-    command: 
-      - "start"
-      - "--all"
-      - "--config"
-      - "/etc/ngrok.yml"
-    volumes:
-      - ./ngrok.yml:/etc/ngrok.yml:ro
-    ports:
-      - "4040:4040"  # Ngrok web interface
-    depends_on:
-      - web
-    restart: unless-stopped
-    networks:
-      - contest_network
-
 networks:
   contest_network:
     driver: bridge

@@ -21,9 +21,7 @@ def get_admin_webapp_url() -> str:
     
     @return URL админ-панели
     """
-    if config.ngrok_enabled and config.ngrok_domain:
-        return f"https://{config.ngrok_domain}/admin"
-    return os.getenv("WEBAPP_URL", "http://localhost:8000") + "/admin"
+    return (os.getenv("WEBAPP_URL") or config.webapp_url).rstrip("/") + "/admin"
 
 
 def get_webapp_url(path: str) -> str:

@@ -56,13 +56,7 @@ async def publish_contest(
             contest_id,
         )
 
-    # Получаем URL вебаппа (ngrok или локальный)
-    # В Docker окружении ngrok всегда включен и используется
-    if config.ngrok_enabled and config.ngrok_domain:
-        webapp_url = f"https://{config.ngrok_domain}"
-    else:
-        # Fallback на локальный URL
-        webapp_url = os.getenv("WEBAPP_URL", "http://localhost:8000")
+    webapp_url = (os.getenv("WEBAPP_URL") or config.webapp_url).rstrip("/")
     
     bot = Bot(token=config.bot_token)
     
@@ -147,13 +141,7 @@ async def publish_results(
         await release_lock(lock_key)
         raise HTTPException(status_code=400, detail="Результаты можно публиковать только для активного или завершённого конкурса")
 
-    # Получаем URL вебаппа (ngrok или локальный)
-    # В Docker окружении ngrok всегда включен и используется
-    if config.ngrok_enabled and config.ngrok_domain:
-        webapp_url = f"https://{config.ngrok_domain}"
-    else:
-        # Fallback на локальный URL
-        webapp_url = os.getenv("WEBAPP_URL", "http://localhost:8000")
+    webapp_url = (os.getenv("WEBAPP_URL") or config.webapp_url).rstrip("/")
     
     bot = Bot(token=config.bot_token)
     

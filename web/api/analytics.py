@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, literal_column, text
 from sqlalchemy.orm import selectinload
 from aiogram import Bot
-import httpx
 from database.db import get_db
 from database.models import Contest, Participant, Prize, ContestStatus
 from web.api.deps import verify_admin
@@ -179,41 +178,6 @@ async def get_health_data(
     finally:
         await bot.session.close()
 
-    ngrok_status = {
-        "status": "warning" if config.ngrok_enabled else "disabled",
-        "detail": "Ngrok отключен в конфиге" if not config.ngrok_enabled else "Ngrok включен, статус уточняется",
-        "public_url": None,
-        "configured_domain": config.ngrok_domain,
-    }
-    if config.ngrok_enabled:
-        try:
-            async with httpx.AsyncClient(timeout=2.5) as client:
-                response = await client.get("http://ngrok:4040/api/tunnels")
-                response.raise_for_status()
-                tunnels = response.json().get("tunnels", [])
-                https_tunnel = next((t for t in tunnels if t.get("public_url", "").startswith("https://")), None)
-                public_url = https_tunnel.get("public_url") if https_tunnel else None
-                matches_config = bool(public_url and config.ngrok_domain and config.ngrok_domain in public_url)
-                ngrok_status = {
-                    "status": "ok" if public_url else "warning",
-                    "detail": (
-                        "Ngrok туннель активен"
-                        if public_url and (matches_config or not config.ngrok_domain)
-                        else "Ngrok активен, но домен не совпадает с конфигом"
-                        if public_url
-                        else "Ngrok не вернул HTTPS туннель"
-                    ),
-                    "public_url": public_url,
-                    "configured_domain": config.ngrok_domain,
-                }
-        except Exception as exc:
-            ngrok_status = {
-                "status": "error",
-                "detail": f"Ngrok API error: {exc}",
-                "public_url": None,
-                "configured_domain": config.ngrok_domain,
-            }
-
     problematic_contests: list[dict] = []
 
     active_without_message_rows = await db.execute(
@@ -322,7 +286,6 @@ async def get_health_data(
             "database": database_status,
             "redis": redis_status,
             "bot_api": bot_status,
-            "ngrok": ngrok_status,
         },
         "issues": {
             **issue_counts,

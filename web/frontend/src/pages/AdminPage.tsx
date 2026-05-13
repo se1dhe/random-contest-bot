@@ -149,8 +149,6 @@ export const AdminPage: React.FC = () => {
     interface HealthService {
         status: 'ok' | 'warning' | 'error' | 'disabled';
         detail: string;
-        public_url?: string | null;
-        configured_domain?: string | null;
     }
     interface AnalyticsHealth {
         generated_at: string;
@@ -158,7 +156,6 @@ export const AdminPage: React.FC = () => {
             database: HealthService;
             redis: HealthService;
             bot_api: HealthService;
-            ngrok: HealthService;
         };
         issues: {
             active_without_message_id: number;

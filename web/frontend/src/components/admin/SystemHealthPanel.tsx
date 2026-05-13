@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, Radio, Bot, Activity, AlertTriangle, CheckCircle2, Clock3, Trophy, Wrench, ArrowRight } from 'lucide-react';
+import { Database, Radio, Bot, AlertTriangle, CheckCircle2, Clock3, Trophy, Wrench, ArrowRight } from 'lucide-react';
 import { GlassCard } from '../ui/Cards';
 
 type HealthStatus = 'ok' | 'warning' | 'error' | 'disabled';
@@ -7,8 +7,6 @@ type HealthStatus = 'ok' | 'warning' | 'error' | 'disabled';
 interface HealthService {
     status: HealthStatus;
     detail: string;
-    public_url?: string | null;
-    configured_domain?: string | null;
 }
 
 interface SystemHealthData {
@@ -17,7 +15,6 @@ interface SystemHealthData {
         database: HealthService;
         redis: HealthService;
         bot_api: HealthService;
-        ngrok: HealthService;
     };
     issues: {
         active_without_message_id: number;
@@ -73,7 +70,6 @@ export const SystemHealthPanel: React.FC<SystemHealthPanelProps> = ({ health, on
         { key: 'database', label: 'PostgreSQL', icon: Database, data: health?.services.database },
         { key: 'redis', label: 'Redis', icon: Radio, data: health?.services.redis },
         { key: 'bot_api', label: 'Bot API', icon: Bot, data: health?.services.bot_api },
-        { key: 'ngrok', label: 'Ngrok', icon: Activity, data: health?.services.ngrok },
     ] as const;
 
     const issues = [
@@ -139,11 +135,6 @@ export const SystemHealthPanel: React.FC<SystemHealthPanelProps> = ({ health, on
                             <div className="mt-2 text-xs leading-relaxed opacity-90">
                                 {data?.detail || 'Нет данных'}
                             </div>
-                            {service.key === 'ngrok' && data?.public_url && (
-                                <div className="mt-2 text-[11px] break-all text-white/70">
-                                    {data.public_url}
-                                </div>
-                            )}
                         </div>
                     );
                 })}
