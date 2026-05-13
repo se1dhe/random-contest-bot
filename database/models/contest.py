@@ -39,10 +39,10 @@ class Contest(BaseModel):
     prize_count = Column(Integer, nullable=False)  # Количество призовых мест
     youtube_channel_id = Column(String(255), nullable=True)  # ID YouTube канала для обязательной подписки
     youtube_subscription_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней подписки
-    twitch_channel_id = Column(String(255), nullable=True)  # ID/логин Twitch канала для обязательного фолловинга
-    twitch_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Twitch
-    kick_channel_id = Column(String(255), nullable=True)  # ID/slug Kick канала для обязательного фолловинга
-    kick_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Kick
+    tiktok_channel_id = Column(String(255), nullable=True)  # Username TikTok аккаунта для обязательного фолловинга
+    tiktok_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга TikTok
+    instagram_channel_id = Column(String(255), nullable=True)  # Username/ID Instagram аккаунта для обязательного фолловинга
+    instagram_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Instagram
     image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
     post_to_sponsors = Column(Boolean, default=False, nullable=False)
     publish_at = Column(DateTime, nullable=True)  # Отложенная публикация конкурса

@@ -256,68 +256,74 @@ class Config:
         return client_secret if client_secret else None
 
     @property
-    def twitch_enabled(self) -> bool:
-        """Включена ли OAuth интеграция Twitch"""
-        return self.get_bool('twitch', 'ENABLED', False)
+    def tiktok_enabled(self) -> bool:
+        """Включена ли OAuth интеграция TikTok."""
+        return self.get_bool('tiktok', 'ENABLED', False)
 
     @property
-    def twitch_client_id(self) -> Optional[str]:
-        """OAuth 2.0 Client ID для Twitch"""
-        value = self.get('twitch', 'CLIENT_ID', '')
+    def tiktok_client_id(self) -> Optional[str]:
+        """Client key для TikTok Login Kit."""
+        value = self.get('tiktok', 'CLIENT_ID', '')
         return value if value else None
 
     @property
-    def twitch_client_secret(self) -> Optional[str]:
-        """OAuth 2.0 Client Secret для Twitch"""
-        value = self.get('twitch', 'CLIENT_SECRET', '')
+    def tiktok_client_secret(self) -> Optional[str]:
+        """Client secret для TikTok Login Kit."""
+        value = self.get('tiktok', 'CLIENT_SECRET', '')
         return value if value else None
 
     @property
-    def twitch_scopes(self) -> str:
-        """OAuth scopes для Twitch"""
-        return self.get('twitch', 'SCOPES', 'user:read:email user:read:follows')
+    def tiktok_scopes(self) -> str:
+        """OAuth scopes для TikTok."""
+        return self.get('tiktok', 'SCOPES', 'user.info.basic')
 
     @property
-    def kick_enabled(self) -> bool:
-        """Включена ли OAuth интеграция Kick"""
-        return self.get_bool('kick', 'ENABLED', False)
-
-    @property
-    def kick_client_id(self) -> Optional[str]:
-        """OAuth Client ID для Kick"""
-        value = self.get('kick', 'CLIENT_ID', '')
+    def tiktok_research_access_token(self) -> Optional[str]:
+        """Client access token TikTok Research API для проверки following."""
+        value = self.get('tiktok', 'RESEARCH_ACCESS_TOKEN', '')
         return value if value else None
 
     @property
-    def kick_client_secret(self) -> Optional[str]:
-        """OAuth Client Secret для Kick"""
-        value = self.get('kick', 'CLIENT_SECRET', '')
+    def instagram_enabled(self) -> bool:
+        """Включена ли OAuth интеграция Instagram."""
+        return self.get_bool('instagram', 'ENABLED', False)
+
+    @property
+    def instagram_client_id(self) -> Optional[str]:
+        """OAuth Client ID для Instagram."""
+        value = self.get('instagram', 'CLIENT_ID', '')
         return value if value else None
 
     @property
-    def kick_scopes(self) -> str:
-        """OAuth scopes для Kick"""
-        return self.get('kick', 'SCOPES', 'user:read')
+    def instagram_client_secret(self) -> Optional[str]:
+        """OAuth Client Secret для Instagram."""
+        value = self.get('instagram', 'CLIENT_SECRET', '')
+        return value if value else None
 
     @property
-    def kick_authorize_url(self) -> str:
-        """OAuth authorize endpoint для Kick"""
-        return self.get('kick', 'AUTHORIZE_URL', 'https://id.kick.com/oauth/authorize')
+    def instagram_scopes(self) -> str:
+        """OAuth scopes для Instagram."""
+        return self.get('instagram', 'SCOPES', 'instagram_business_basic,instagram_business_manage_messages')
 
     @property
-    def kick_token_url(self) -> str:
-        """OAuth token endpoint для Kick"""
-        return self.get('kick', 'TOKEN_URL', 'https://id.kick.com/oauth/token')
+    def instagram_authorize_url(self) -> str:
+        """OAuth authorize endpoint для Instagram."""
+        return self.get('instagram', 'AUTHORIZE_URL', 'https://www.instagram.com/oauth/authorize')
 
     @property
-    def kick_userinfo_url(self) -> str:
-        """OAuth userinfo endpoint для Kick"""
-        return self.get('kick', 'USERINFO_URL', 'https://api.kick.com/public/v1/users')
+    def instagram_token_url(self) -> str:
+        """OAuth token endpoint для Instagram."""
+        return self.get('instagram', 'TOKEN_URL', 'https://api.instagram.com/oauth/access_token')
 
     @property
-    def kick_following_url(self) -> str:
-        """Kick API endpoint списка подписок пользователя"""
-        return self.get('kick', 'FOLLOWING_URL', 'https://api.kick.com/public/v1/users/{user_id}/following')
+    def instagram_userinfo_url(self) -> str:
+        """Instagram user info endpoint."""
+        return self.get('instagram', 'USERINFO_URL', 'https://graph.instagram.com/me?fields=id,username,name,account_type')
+
+    @property
+    def instagram_following_url(self) -> str:
+        """Instagram endpoint для проверки отношения, если приложение его поддерживает."""
+        return self.get('instagram', 'FOLLOWING_URL', 'https://graph.instagram.com/{user_id}?fields=username,is_user_follow_business')
 
 
 # Глобальный экземпляр конфигурации

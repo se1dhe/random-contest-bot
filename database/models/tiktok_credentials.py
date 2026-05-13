@@ -1,5 +1,5 @@
 """
-Модель для хранения Kick OAuth credentials пользователей.
+Модель для хранения TikTok OAuth credentials пользователей.
 """
 import json
 
@@ -8,17 +8,18 @@ from sqlalchemy import BigInteger, Column, DateTime, String, Text
 from database.models.base import BaseModel
 
 
-class KickCredentials(BaseModel):
-    """Сохраненные Kick credentials для проверки условий конкурса."""
+class TikTokCredentials(BaseModel):
+    """Сохраненные TikTok credentials для повторной проверки условий конкурса."""
 
-    __tablename__ = "kick_credentials"
+    __tablename__ = "tiktok_credentials"
 
     user_id = Column(BigInteger, nullable=False, unique=True, index=True, comment="ID пользователя Telegram")
-    kick_user_id = Column(String(255), nullable=False, index=True, comment="ID пользователя Kick")
-    kick_username = Column(String(255), nullable=True, comment="Username пользователя Kick")
+    tiktok_user_id = Column(String(255), nullable=False, index=True, comment="ID пользователя TikTok")
+    tiktok_login = Column(String(255), nullable=True, comment="Логин пользователя TikTok")
+    tiktok_display_name = Column(String(255), nullable=True, comment="Display name пользователя TikTok")
     token = Column(Text, nullable=False, comment="OAuth access token")
     refresh_token = Column(Text, nullable=True, comment="OAuth refresh token")
-    token_uri = Column(String(255), nullable=False, server_default="https://id.kick.com/oauth/token", comment="Token URI")
+    token_uri = Column(String(255), nullable=False, server_default="https://open.tiktokapis.com/v2/oauth/token/", comment="Token URI")
     client_id = Column(String(255), nullable=False, comment="OAuth client ID")
     client_secret = Column(String(255), nullable=False, comment="OAuth client secret")
     scopes = Column(Text, nullable=False, comment="OAuth scopes (JSON array)")

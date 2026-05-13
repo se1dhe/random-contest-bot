@@ -155,10 +155,10 @@ async def get_contest(
         ],
         "youtube_channel_id": contest.youtube_channel_id,
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
-        "twitch_channel_id": contest.twitch_channel_id,
-        "twitch_follow_days_required": contest.twitch_follow_days_required,
-        "kick_channel_id": contest.kick_channel_id,
-        "kick_follow_days_required": contest.kick_follow_days_required,
+        "tiktok_channel_id": contest.tiktok_channel_id,
+        "tiktok_follow_days_required": contest.tiktok_follow_days_required,
+        "instagram_channel_id": contest.instagram_channel_id,
+        "instagram_follow_days_required": contest.instagram_follow_days_required,
     }
 
 
@@ -215,10 +215,10 @@ async def get_contest_info(
         ],
         "youtube_channel_id": contest.youtube_channel_id,
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
-        "twitch_channel_id": contest.twitch_channel_id,
-        "twitch_follow_days_required": contest.twitch_follow_days_required,
-        "kick_channel_id": contest.kick_channel_id,
-        "kick_follow_days_required": contest.kick_follow_days_required,
+        "tiktok_channel_id": contest.tiktok_channel_id,
+        "tiktok_follow_days_required": contest.tiktok_follow_days_required,
+        "instagram_channel_id": contest.instagram_channel_id,
+        "instagram_follow_days_required": contest.instagram_follow_days_required,
         "image_path": contest.image_path
     }
 
@@ -265,34 +265,34 @@ async def check_subscription(
                 db=db
             )
 
-    twitch_subscribed = None
-    if contest.twitch_channel_id:
-        from web.api.twitch_auth import check_twitch_subscription, get_user_credentials as get_twitch_credentials
-        twitch_credentials = await get_twitch_credentials(user_id, db)
-        if twitch_credentials:
-            twitch_subscribed = await check_twitch_subscription(
+    tiktok_subscribed = None
+    if contest.tiktok_channel_id:
+        from web.api.tiktok_auth import check_tiktok_subscription, get_user_credentials as get_tiktok_credentials
+        tiktok_credentials = await get_tiktok_credentials(user_id, db)
+        if tiktok_credentials:
+            tiktok_subscribed = await check_tiktok_subscription(
                 user_id=user_id,
-                target_channel_id=contest.twitch_channel_id,
-                days_required=contest.twitch_follow_days_required,
+                target_channel_id=contest.tiktok_channel_id,
+                days_required=contest.tiktok_follow_days_required,
                 db=db,
             )
 
-    kick_subscribed = None
-    if contest.kick_channel_id:
-        from web.api.kick_auth import get_kick_subscription_status
-        kick_status = await get_kick_subscription_status(
+    instagram_subscribed = None
+    if contest.instagram_channel_id:
+        from web.api.instagram_auth import get_instagram_subscription_status
+        instagram_status = await get_instagram_subscription_status(
             user_id=user_id,
-            target_channel_id=contest.kick_channel_id,
-            days_required=contest.kick_follow_days_required,
+            target_channel_id=contest.instagram_channel_id,
+            days_required=contest.instagram_follow_days_required,
             db=db,
         )
-        kick_subscribed = kick_status["met"] if kick_status["connected"] else None
+        instagram_subscribed = instagram_status["met"] if instagram_status["connected"] else None
     
     return {
         "subscriptions": subscriptions,
         "youtube_subscribed": youtube_subscribed,
-        "twitch_subscribed": twitch_subscribed,
-        "kick_subscribed": kick_subscribed,
+        "tiktok_subscribed": tiktok_subscribed,
+        "instagram_subscribed": instagram_subscribed,
     }
 
 
@@ -397,45 +397,45 @@ async def auto_check(
         }
         conditions.append(youtube_condition)
 
-    twitch_condition = None
-    if contest.twitch_channel_id:
-        from web.api.twitch_auth import check_twitch_subscription, get_user_credentials as get_twitch_credentials
-        twitch_credentials = await get_twitch_credentials(user_id, db)
-        twitch_met = False
-        if twitch_credentials:
-            twitch_met = await check_twitch_subscription(
+    tiktok_condition = None
+    if contest.tiktok_channel_id:
+        from web.api.tiktok_auth import check_tiktok_subscription, get_user_credentials as get_tiktok_credentials
+        tiktok_credentials = await get_tiktok_credentials(user_id, db)
+        tiktok_met = False
+        if tiktok_credentials:
+            tiktok_met = await check_tiktok_subscription(
                 user_id=user_id,
-                target_channel_id=contest.twitch_channel_id,
-                days_required=contest.twitch_follow_days_required,
+                target_channel_id=contest.tiktok_channel_id,
+                days_required=contest.tiktok_follow_days_required,
                 db=db,
             )
-        twitch_condition = {
-            "type": "twitch",
-            "id": contest.twitch_channel_id,
-            "title": translate(contest.language, "twitch_channel"),
-            "met": twitch_met,
-            "connected": twitch_credentials is not None,
+        tiktok_condition = {
+            "type": "tiktok",
+            "id": contest.tiktok_channel_id,
+            "title": translate(contest.language, "tiktok_channel"),
+            "met": tiktok_met,
+            "connected": tiktok_credentials is not None,
         }
-        conditions.append(twitch_condition)
+        conditions.append(tiktok_condition)
 
-    kick_condition = None
-    if contest.kick_channel_id:
-        from web.api.kick_auth import get_kick_subscription_status
-        kick_status = await get_kick_subscription_status(
+    instagram_condition = None
+    if contest.instagram_channel_id:
+        from web.api.instagram_auth import get_instagram_subscription_status
+        instagram_status = await get_instagram_subscription_status(
             user_id=user_id,
-            target_channel_id=contest.kick_channel_id,
-            days_required=contest.kick_follow_days_required,
+            target_channel_id=contest.instagram_channel_id,
+            days_required=contest.instagram_follow_days_required,
             db=db,
         )
-        kick_condition = {
-            "type": "kick",
-            "id": contest.kick_channel_id,
-            "title": translate(contest.language, "kick_channel"),
-            "met": kick_status["met"],
-            "connected": kick_status["connected"],
-            "verification_status": kick_status["status"],
+        instagram_condition = {
+            "type": "instagram",
+            "id": contest.instagram_channel_id,
+            "title": translate(contest.language, "instagram_channel"),
+            "met": instagram_status["met"],
+            "connected": instagram_status["connected"],
+            "verification_status": instagram_status["status"],
         }
-        conditions.append(kick_condition)
+        conditions.append(instagram_condition)
         
     all_met = all(c['met'] for c in conditions)
     
@@ -580,78 +580,78 @@ async def register_participant(
                     detail=translate(language, "youtube_subscribe_required")
                 )
     
-    # Проверяем фолловинг Twitch, если требуется
-    if contest.twitch_channel_id:
-        from web.api.twitch_auth import check_twitch_subscription, get_user_credentials as get_twitch_credentials
+    # Проверяем фолловинг TikTok, если требуется
+    if contest.tiktok_channel_id:
+        from web.api.tiktok_auth import check_tiktok_subscription, get_user_credentials as get_tiktok_credentials
 
-        twitch_credentials = await get_twitch_credentials(user_id, db)
-        if not twitch_credentials:
+        tiktok_credentials = await get_tiktok_credentials(user_id, db)
+        if not tiktok_credentials:
             raise HTTPException(
                 status_code=400,
-                detail=translate(language, "twitch_auth_required")
+                detail=translate(language, "tiktok_auth_required")
             )
 
-        is_following_twitch = await check_twitch_subscription(
+        is_following_tiktok = await check_tiktok_subscription(
             user_id=user_id,
-            target_channel_id=contest.twitch_channel_id,
-            days_required=contest.twitch_follow_days_required,
+            target_channel_id=contest.tiktok_channel_id,
+            days_required=contest.tiktok_follow_days_required,
             db=db,
         )
-        if not is_following_twitch:
-            if contest.twitch_follow_days_required > 0:
+        if not is_following_tiktok:
+            if contest.tiktok_follow_days_required > 0:
                 raise HTTPException(
                     status_code=400,
                     detail=translate(
                         language,
-                        "twitch_follow_days_required",
-                        days=contest.twitch_follow_days_required,
-                        unit=day_unit(language, contest.twitch_follow_days_required),
+                        "tiktok_follow_days_required",
+                        days=contest.tiktok_follow_days_required,
+                        unit=day_unit(language, contest.tiktok_follow_days_required),
                     )
                 )
             raise HTTPException(
                 status_code=400,
-                detail=translate(language, "twitch_follow_required")
+                detail=translate(language, "tiktok_follow_required")
             )
 
-    # Проверяем фолловинг Kick, если требуется
-    if contest.kick_channel_id:
-        from web.api.kick_auth import (
-            KICK_STATUS_UNVERIFIED,
-            get_kick_subscription_status,
+    # Проверяем фолловинг Instagram, если требуется
+    if contest.instagram_channel_id:
+        from web.api.instagram_auth import (
+            INSTAGRAM_STATUS_UNVERIFIED,
+            get_instagram_subscription_status,
         )
 
-        kick_status = await get_kick_subscription_status(
+        instagram_status = await get_instagram_subscription_status(
             user_id=user_id,
-            target_channel_id=contest.kick_channel_id,
-            days_required=contest.kick_follow_days_required,
+            target_channel_id=contest.instagram_channel_id,
+            days_required=contest.instagram_follow_days_required,
             db=db,
         )
-        if not kick_status["connected"]:
+        if not instagram_status["connected"]:
             raise HTTPException(
                 status_code=400,
-                detail=translate(language, "kick_auth_required")
+                detail=translate(language, "instagram_auth_required")
             )
 
-        is_following_kick = kick_status["met"]
-        if not is_following_kick:
-            if kick_status["status"] == KICK_STATUS_UNVERIFIED:
+        is_following_instagram = instagram_status["met"]
+        if not is_following_instagram:
+            if instagram_status["status"] == INSTAGRAM_STATUS_UNVERIFIED:
                 raise HTTPException(
                     status_code=400,
-                    detail=translate(language, "kick_follow_unverified")
+                    detail=translate(language, "instagram_follow_unverified")
                 )
-            if contest.kick_follow_days_required > 0:
+            if contest.instagram_follow_days_required > 0:
                 raise HTTPException(
                     status_code=400,
                     detail=translate(
                         language,
-                        "kick_follow_days_required",
-                        days=contest.kick_follow_days_required,
-                        unit=day_unit(language, contest.kick_follow_days_required),
+                        "instagram_follow_days_required",
+                        days=contest.instagram_follow_days_required,
+                        unit=day_unit(language, contest.instagram_follow_days_required),
                     )
                 )
             raise HTTPException(
                 status_code=400,
-                detail=translate(language, "kick_follow_required")
+                detail=translate(language, "instagram_follow_required")
             )
 
     # Извлекаем данные из initData если есть

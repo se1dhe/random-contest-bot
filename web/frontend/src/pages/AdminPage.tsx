@@ -71,10 +71,10 @@ export const AdminPage: React.FC = () => {
         channel?: { channel_title?: string; channel_username?: string | null };
         require_youtube_subscription?: boolean;
         youtube_subscription_days_required?: number;
-        require_twitch_follow?: boolean;
-        twitch_follow_days_required?: number;
-        require_kick_follow?: boolean;
-        kick_follow_days_required?: number;
+        require_tiktok_follow?: boolean;
+        tiktok_follow_days_required?: number;
+        require_instagram_follow?: boolean;
+        instagram_follow_days_required?: number;
     }
     interface ContestPreview {
         contest_id: number;
@@ -131,7 +131,7 @@ export const AdminPage: React.FC = () => {
         title: string;
         description?: string;
     }
-    interface AdminKickChannel {
+    interface AdminInstagramChannel {
         channel_id: string;
         title: string;
         description?: string;
@@ -187,7 +187,7 @@ export const AdminPage: React.FC = () => {
     const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
 
     // Channel adding state
-    const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | 'kick' | null>(null);
+    const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | 'instagram' | null>(null);
     const [newChannelInput, setNewChannelInput] = useState('');
     const [isAddingChannel, setIsAddingChannel] = useState(false);
     const [activeChannelId, setActiveChannelId] = useState<number | string | null>(null);
@@ -201,7 +201,7 @@ export const AdminPage: React.FC = () => {
     const [contestFilter, setContestFilter] = useState<'all' | 'scheduled' | 'active' | 'draft' | 'finished' | 'results_published'>('all');
     const [contestPage, setContestPage] = useState(1);
     const [actionSearch, setActionSearch] = useState('');
-    const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'kick_channel'>('all');
+    const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'instagram_channel'>('all');
     const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -284,8 +284,8 @@ export const AdminPage: React.FC = () => {
         channel_reactivated: 'Telegram-канал восстановлен',
         youtube_channel_created: 'YouTube-канал добавлен',
         youtube_channel_deleted: 'YouTube-канал удален',
-        kick_channel_created: 'Kick-канал добавлен',
-        kick_channel_deleted: 'Kick-канал удален',
+        instagram_channel_created: 'Instagram-канал добавлен',
+        instagram_channel_deleted: 'Instagram-канал удален',
     };
 
     const formatHistoryDetails = (entry: AdminHistoryItem) => {
@@ -351,7 +351,7 @@ export const AdminPage: React.FC = () => {
             if (parsed.contestFilter && ['all', 'scheduled', 'active', 'draft', 'finished', 'results_published'].includes(parsed.contestFilter)) {
                 setContestFilter(parsed.contestFilter);
             }
-            if (parsed.actionFilter && ['all', 'contest', 'channel', 'youtube_channel', 'kick_channel'].includes(parsed.actionFilter)) {
+            if (parsed.actionFilter && ['all', 'contest', 'channel', 'youtube_channel', 'instagram_channel'].includes(parsed.actionFilter)) {
                 setActionFilter(parsed.actionFilter);
             }
             if (typeof parsed.contestSearch === 'string') {
@@ -496,10 +496,10 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData,
     });
 
-    const { data: kickChannels, refetch: refetchKickChannels } = useQuery<AdminKickChannel[]>({
-        queryKey: ['admin_kick_channels', initData],
+    const { data: instagramChannels, refetch: refetchInstagramChannels } = useQuery<AdminInstagramChannel[]>({
+        queryKey: ['admin_instagram_channels', initData],
         queryFn: async () => {
-            const res = await axios.get('/api/admin/kick-channels', {
+            const res = await axios.get('/api/admin/instagram-channels', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -624,7 +624,7 @@ export const AdminPage: React.FC = () => {
         }
         refetchChannels();
         refetchYoutubeChannels();
-        refetchKickChannels();
+        refetchInstagramChannels();
         refetchAnalytics();
         refetchGrowth();
         refetchHealth();
@@ -1035,17 +1035,17 @@ export const AdminPage: React.FC = () => {
                 });
                 await refetchYoutubeChannels();
             } else {
-                // Kick
+                // Instagram
                 let channelId = newChannelInput.trim();
                 channelId = channelId
-                    .replace('https://kick.com/', '')
-                    .replace('http://kick.com/', '')
-                    .replace('kick.com/', '')
+                    .replace('https://instagram.com/', '')
+                    .replace('http://instagram.com/', '')
+                    .replace('instagram.com/', '')
                     .replace(/^@/, '')
                     .replace(/\/+$/, '')
                     .trim();
 
-                await axios.post('/api/admin/kick-channels', {
+                await axios.post('/api/admin/instagram-channels', {
                     channel_id: channelId,
                     title: channelId,
                     description: ''
@@ -1053,7 +1053,7 @@ export const AdminPage: React.FC = () => {
                     headers: { '_auth': initData },
                     params: { _auth: initData }
                 });
-                await refetchKickChannels();
+                await refetchInstagramChannels();
             }
             hapticFeedback('heavy');
             setAddingChannelType(null);
@@ -1063,7 +1063,7 @@ export const AdminPage: React.FC = () => {
                     ? 'Telegram-канал добавлен'
                     : addingChannelType === 'youtube'
                         ? 'YouTube-канал добавлен'
-                        : 'Kick-канал добавлен'
+                        : 'Instagram-канал добавлен'
             );
         } catch (err: unknown) {
             console.error('Failed to add channel', err);
@@ -1120,21 +1120,21 @@ export const AdminPage: React.FC = () => {
         }
     };
 
-    const handleDeleteKickChannel = async (channelId: string) => {
-        if (!confirm('Вы уверены, что хотите удалить этот Kick канал?')) return;
+    const handleDeleteInstagramChannel = async (channelId: string) => {
+        if (!confirm('Вы уверены, что хотите удалить этот Instagram канал?')) return;
         setError(null);
         try {
-            await axios.delete(`/api/admin/kick-channels/${channelId}`, {
+            await axios.delete(`/api/admin/instagram-channels/${channelId}`, {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
-            await refetchKickChannels();
+            await refetchInstagramChannels();
             hapticFeedback('heavy');
-            setSuccessMessage('Kick-канал удален');
+            setSuccessMessage('Instagram-канал удален');
         } catch (err: unknown) {
-            console.error('Failed to delete Kick channel', err);
+            console.error('Failed to delete Instagram channel', err);
             hapticFeedback('rigid');
-            setError(extractErrorMessage(err, 'Не удалось удалить Kick канал'));
+            setError(extractErrorMessage(err, 'Не удалось удалить Instagram канал'));
         } finally {
             setActiveChannelId(null);
         }
@@ -1299,19 +1299,19 @@ export const AdminPage: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
-                                {selectedContest.require_twitch_follow && (
+                                {selectedContest.require_tiktok_follow && (
                                     <div className="pt-2">
                                         <div className="flex items-center space-x-2 text-violet-400">
                                             <AlertCircle size={14} />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Twitch ({selectedContest.twitch_follow_days_required} дн.)</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется TikTok ({selectedContest.tiktok_follow_days_required} дн.)</span>
                                         </div>
                                     </div>
                                 )}
-                                {selectedContest.require_kick_follow && (
+                                {selectedContest.require_instagram_follow && (
                                     <div className="pt-2">
                                         <div className="flex items-center space-x-2 text-emerald-400">
                                             <AlertCircle size={14} />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Kick ({selectedContest.kick_follow_days_required} дн.)</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Instagram ({selectedContest.instagram_follow_days_required} дн.)</span>
                                         </div>
                                     </div>
                                 )}
@@ -2039,7 +2039,7 @@ export const AdminPage: React.FC = () => {
                                         >
                                             <div className="flex justify-between items-center mb-2">
                                                 <h4 className="font-bold text-sm">
-                                                    Добавить {addingChannelType === 'telegram' ? 'Telegram' : addingChannelType === 'youtube' ? 'YouTube' : 'Kick'} канал
+                                                    Добавить {addingChannelType === 'telegram' ? 'Telegram' : addingChannelType === 'youtube' ? 'YouTube' : 'Instagram'} канал
                                                 </h4>
                                                 <button onClick={() => setAddingChannelType(null)} className="text-white/40">
                                                     <Trash2 size={16} />
@@ -2213,19 +2213,19 @@ export const AdminPage: React.FC = () => {
                                             {(!youtubeChannels || youtubeChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет YouTube каналов</p>}
                                         </div>
 
-                                        {/* Kick Channels */}
+                                        {/* Instagram Channels */}
                                         <div className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
-                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Kick Каналы</h3>
+                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Instagram Каналы</h3>
                                                 <button
-                                                    onClick={() => { setAddingChannelType('kick'); setNewChannelInput(''); setError(null); }}
+                                                    onClick={() => { setAddingChannelType('instagram'); setNewChannelInput(''); setError(null); }}
                                                     className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg flex items-center space-x-1 active:scale-95 transition-all"
                                                 >
                                                     <Plus size={14} />
                                                     <span>Добавить</span>
                                                 </button>
                                             </div>
-                                            {kickChannels?.map((ch, i) => (
+                                            {instagramChannels?.map((ch, i) => (
                                                 <GlassCard
                                                     key={i}
                                                     className={cn(
@@ -2257,7 +2257,7 @@ export const AdminPage: React.FC = () => {
                                                             <div className="p-1 space-y-1">
                                                                 <button
                                                                     className="w-full flex items-center space-x-2 px-3 py-2 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
-                                                                    onClick={() => handleDeleteKickChannel(ch.channel_id)}
+                                                                    onClick={() => handleDeleteInstagramChannel(ch.channel_id)}
                                                                 >
                                                                     <Trash2 size={14} />
                                                                     <span>Удалить канал</span>
@@ -2267,7 +2267,7 @@ export const AdminPage: React.FC = () => {
                                                     )}
                                                 </GlassCard>
                                             ))}
-                                            {(!kickChannels || kickChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет Kick каналов</p>}
+                                            {(!instagramChannels || instagramChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет Instagram каналов</p>}
                                         </div>
                                     </div>
                                 </motion.div>

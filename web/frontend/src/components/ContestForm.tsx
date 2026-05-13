@@ -8,9 +8,9 @@ import {
     Trash2,
     ChevronLeft,
     ChevronRight,
+    Instagram,
+    Music2,
     Youtube,
-    Twitch,
-    Gamepad2,
     Check,
     MessageSquare
 } from 'lucide-react';
@@ -39,7 +39,7 @@ interface AdminYoutubeChannel {
     title: string;
     description?: string;
 }
-interface AdminKickChannel {
+interface AdminInstagramChannel {
     channel_id: string;
     title: string;
     description?: string;
@@ -75,12 +75,12 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [postToSponsors, setPostToSponsors] = useState(false);
     const [requireYoutube, setRequireYoutube] = useState(false);
     const [youtubeDays, setYoutubeDays] = useState(0);
-    const [requireTwitch, setRequireTwitch] = useState(false);
-    const [twitchDays, setTwitchDays] = useState(0);
-    const [twitchChannelId, setTwitchChannelId] = useState('');
-    const [requireKick, setRequireKick] = useState(false);
-    const [kickDays, setKickDays] = useState(0);
-    const [kickChannelId, setKickChannelId] = useState('');
+    const [requireTikTok, setRequireTikTok] = useState(false);
+    const [tiktokDays, setTikTokDays] = useState(0);
+    const [tiktokChannelId, setTikTokChannelId] = useState('');
+    const [requireInstagram, setRequireInstagram] = useState(false);
+    const [instagramDays, setInstagramDays] = useState(0);
+    const [instagramChannelId, setInstagramChannelId] = useState('');
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -104,10 +104,10 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
 
     const youtubeChannelMissing = requireYoutube && !youtubeChannelId.trim();
     const youtubeDaysInvalid = requireYoutube && youtubeDays < 0;
-    const twitchChannelMissing = requireTwitch && !twitchChannelId.trim();
-    const twitchDaysInvalid = requireTwitch && twitchDays < 0;
-    const kickChannelMissing = requireKick && !kickChannelId.trim();
-    const kickDaysInvalid = requireKick && kickDays < 0;
+    const tiktokChannelMissing = requireTikTok && !tiktokChannelId.trim();
+    const tiktokDaysInvalid = requireTikTok && tiktokDays < 0;
+    const instagramChannelMissing = requireInstagram && !instagramChannelId.trim();
+    const instagramDaysInvalid = requireInstagram && instagramDays < 0;
     const manualThreadIdMissing = topicChoice === 'manual' && !manualThreadId.trim();
     const manualThreadIdInvalid =
         topicChoice === 'manual' &&
@@ -115,10 +115,10 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const hasStep3ValidationErrors =
         youtubeChannelMissing ||
         youtubeDaysInvalid ||
-        twitchChannelMissing ||
-        twitchDaysInvalid ||
-        kickChannelMissing ||
-        kickDaysInvalid;
+        tiktokChannelMissing ||
+        tiktokDaysInvalid ||
+        instagramChannelMissing ||
+        instagramDaysInvalid;
 
 
     // Queries
@@ -158,10 +158,10 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         enabled: !!initData,
     });
 
-    const { data: kickChannels } = useQuery<AdminKickChannel[]>({
-        queryKey: ['admin_kick_channels', initData],
+    const { data: instagramChannels } = useQuery<AdminInstagramChannel[]>({
+        queryKey: ['admin_instagram_channels', initData],
         queryFn: async () => {
-            const res = await axios.get('/api/admin/kick-channels', {
+            const res = await axios.get('/api/admin/instagram-channels', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -209,7 +209,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const handleSubmit = async () => {
         if (hasStep3ValidationErrors) {
             hapticFeedback('rigid');
-            setError('Заполните обязательные поля условий YouTube/Twitch/Kick перед созданием конкурса.');
+            setError('Заполните обязательные поля условий YouTube/TikTok/Instagram перед созданием конкурса.');
             return;
         }
 
@@ -227,10 +227,10 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         formData.append('draw_method', drawMethod);
         formData.append('require_youtube_subscription', requireYoutube.toString());
         formData.append('youtube_subscription_days_required', youtubeDays.toString());
-        formData.append('require_twitch_follow', requireTwitch.toString());
-        formData.append('twitch_follow_days_required', twitchDays.toString());
-        formData.append('require_kick_follow', requireKick.toString());
-        formData.append('kick_follow_days_required', kickDays.toString());
+        formData.append('require_tiktok_follow', requireTikTok.toString());
+        formData.append('tiktok_follow_days_required', tiktokDays.toString());
+        formData.append('require_instagram_follow', requireInstagram.toString());
+        formData.append('instagram_follow_days_required', instagramDays.toString());
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
         formData.append('post_to_sponsors', postToSponsors.toString());
@@ -242,8 +242,8 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                     : '';
         if (selectedThreadId) formData.append('message_thread_id', selectedThreadId);
         if (requireYoutube) formData.append('youtube_channel_id', youtubeChannelId);
-        if (requireTwitch) formData.append('twitch_channel_id', twitchChannelId);
-        if (requireKick) formData.append('kick_channel_id', kickChannelId);
+        if (requireTikTok) formData.append('tiktok_channel_id', tiktokChannelId);
+        if (requireInstagram) formData.append('instagram_channel_id', instagramChannelId);
         if (image) formData.append('image', image);
 
         try {
@@ -656,40 +656,40 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                 </GlassCard>
                             </div>
 
-                            {/* Twitch Condition */}
+                            {/* TikTok Condition */}
                             <div className="space-y-3">
-                                <label className="form-label">Условие Twitch</label>
-                                <GlassCard className={`p-4 transition-all ${requireTwitch ? 'border-violet-500/20 bg-violet-500/5' : ''}`}>
+                                <label className="form-label">Условие TikTok</label>
+                                <GlassCard className={`p-4 transition-all ${requireTikTok ? 'border-violet-500/20 bg-violet-500/5' : ''}`}>
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center space-x-3">
-                                            <div className={`p-2 rounded-lg ${requireTwitch ? 'bg-violet-500/20 text-violet-400' : 'bg-white/10 text-white/40'}`}>
-                                                <Twitch size={20} />
+                                            <div className={`p-2 rounded-lg ${requireTikTok ? 'bg-violet-500/20 text-violet-400' : 'bg-white/10 text-white/40'}`}>
+                                                <Music2 size={20} />
                                             </div>
                                             <div>
-                                                <div className="text-sm font-bold">Фолловинг Twitch</div>
+                                                <div className="text-sm font-bold">Фолловинг TikTok</div>
                                                 <div className="text-[10px] text-white/40">Требовать от участников</div>
                                             </div>
                                         </div>
                                         <div
-                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireTwitch ? 'bg-violet-500' : 'bg-white/20'}`}
-                                            onClick={() => setRequireTwitch(!requireTwitch)}
+                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireTikTok ? 'bg-violet-500' : 'bg-white/20'}`}
+                                            onClick={() => setRequireTikTok(!requireTikTok)}
                                         >
-                                            <motion.div animate={{ x: requireTwitch ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
+                                            <motion.div animate={{ x: requireTikTok ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
                                         </div>
                                     </div>
 
-                                    {requireTwitch && (
+                                    {requireTikTok && (
                                         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
                                             <div>
-                                                <label className="form-label text-[10px]">Twitch канал (логин или ID)</label>
+                                                <label className="form-label text-[10px]">TikTok канал (логин или ID)</label>
                                                 <input
                                                     className="form-input py-2 text-xs"
-                                                    value={twitchChannelId}
-                                                    onChange={e => setTwitchChannelId(e.target.value)}
+                                                    value={tiktokChannelId}
+                                                    onChange={e => setTikTokChannelId(e.target.value)}
                                                     placeholder="например: se1dhe"
                                                 />
-                                                {twitchChannelMissing && (
-                                                    <div className="mt-1 text-[10px] text-red-300">Укажите Twitch-канал для проверки фолловинга.</div>
+                                                {tiktokChannelMissing && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Укажите TikTok-канал для проверки фолловинга.</div>
                                                 )}
                                             </div>
                                             <div>
@@ -698,10 +698,10 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                                     type="number"
                                                     min={0}
                                                     className="form-input py-2 text-xs"
-                                                    value={twitchDays}
-                                                    onChange={e => setTwitchDays(parseInt(e.target.value) || 0)}
+                                                    value={tiktokDays}
+                                                    onChange={e => setTikTokDays(parseInt(e.target.value) || 0)}
                                                 />
-                                                {twitchDaysInvalid && (
+                                                {tiktokDaysInvalid && (
                                                     <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
                                                 )}
                                             </div>
@@ -710,47 +710,47 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                 </GlassCard>
                             </div>
 
-                            {/* Kick Condition */}
+                            {/* Instagram Condition */}
                             <div className="space-y-3">
-                                <label className="form-label">Условие Kick</label>
-                                <GlassCard className={`p-4 transition-all ${requireKick ? 'border-emerald-500/20 bg-emerald-500/5' : ''}`}>
+                                <label className="form-label">Условие Instagram</label>
+                                <GlassCard className={`p-4 transition-all ${requireInstagram ? 'border-emerald-500/20 bg-emerald-500/5' : ''}`}>
                                     <div className="flex items-center justify-between mb-4">
                                         <div className="flex items-center space-x-3">
-                                            <div className={`p-2 rounded-lg ${requireKick ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'}`}>
-                                                <Gamepad2 size={20} />
+                                            <div className={`p-2 rounded-lg ${requireInstagram ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'}`}>
+                                                <Instagram size={20} />
                                             </div>
                                             <div>
-                                                <div className="text-sm font-bold">Фолловинг Kick</div>
+                                                <div className="text-sm font-bold">Фолловинг Instagram</div>
                                                 <div className="text-[10px] text-white/40">Требовать от участников</div>
                                             </div>
                                         </div>
                                         <div
-                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireKick ? 'bg-emerald-500' : 'bg-white/20'}`}
-                                            onClick={() => setRequireKick(!requireKick)}
+                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireInstagram ? 'bg-emerald-500' : 'bg-white/20'}`}
+                                            onClick={() => setRequireInstagram(!requireInstagram)}
                                         >
-                                            <motion.div animate={{ x: requireKick ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
+                                            <motion.div animate={{ x: requireInstagram ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
                                         </div>
                                     </div>
 
-                                    {requireKick && (
+                                    {requireInstagram && (
                                         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
                                             <div>
-                                                <label className="form-label text-[10px]">Kick канал</label>
+                                                <label className="form-label text-[10px]">Instagram канал</label>
                                                 <select
                                                     className="form-select text-xs py-2 bg-emerald-500/5 border-emerald-500/20 focus:border-emerald-500/40"
-                                                    value={kickChannelId}
-                                                    onChange={e => setKickChannelId(e.target.value)}
+                                                    value={instagramChannelId}
+                                                    onChange={e => setInstagramChannelId(e.target.value)}
                                                 >
                                                     <option value="">Выберите канал...</option>
-                                                    {kickChannels?.map(c => (
+                                                    {instagramChannels?.map(c => (
                                                         <option key={c.channel_id} value={c.channel_id}>{c.title}</option>
                                                     ))}
                                                 </select>
-                                                {!kickChannels?.length && (
-                                                    <div className="mt-1 text-[8px] text-emerald-300">Сначала добавьте Kick каналы в разделе «Каналы».</div>
+                                                {!instagramChannels?.length && (
+                                                    <div className="mt-1 text-[8px] text-emerald-300">Сначала добавьте Instagram каналы в разделе «Каналы».</div>
                                                 )}
-                                                {kickChannelMissing && (
-                                                    <div className="mt-1 text-[10px] text-red-300">Укажите Kick-канал для проверки фолловинга.</div>
+                                                {instagramChannelMissing && (
+                                                    <div className="mt-1 text-[10px] text-red-300">Укажите Instagram-канал для проверки фолловинга.</div>
                                                 )}
                                             </div>
                                             <div>
@@ -759,10 +759,10 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                                     type="number"
                                                     min={0}
                                                     className="form-input py-2 text-xs"
-                                                    value={kickDays}
-                                                    onChange={e => setKickDays(parseInt(e.target.value) || 0)}
+                                                    value={instagramDays}
+                                                    onChange={e => setInstagramDays(parseInt(e.target.value) || 0)}
                                                 />
-                                                {kickDaysInvalid && (
+                                                {instagramDaysInvalid && (
                                                     <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
                                                 )}
                                             </div>

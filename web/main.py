@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from shared.config import config
-from web.api import contests, admin, publish, youtube_auth, ws, analytics, twitch_auth, kick_auth
+from web.api import contests, admin, publish, youtube_auth, ws, analytics, tiktok_auth, instagram_auth
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,8 +33,8 @@ app.include_router(contests.router)
 app.include_router(admin.router)
 app.include_router(publish.router)
 app.include_router(youtube_auth.router)
-app.include_router(twitch_auth.router)
-app.include_router(kick_auth.router)
+app.include_router(tiktok_auth.router)
+app.include_router(instagram_auth.router)
 app.include_router(ws.router)
 app.include_router(analytics.router)
 
@@ -106,7 +106,7 @@ async def privacy():
 <ul>
   <li>Telegram user ID, username, first name, and last name when a participant registers for a contest.</li>
   <li>Contest registration records, participation status, and winner information.</li>
-  <li>OAuth tokens and account identifiers for connected services such as YouTube, Twitch, or Kick when a contest requires external subscription verification.</li>
+  <li>OAuth tokens and account identifiers for connected services such as YouTube, TikTok, or Instagram when a contest requires external subscription verification.</li>
 </ul>
 <h2>Google User Data</h2>
 <p>If a participant connects YouTube, the app requests read-only YouTube access only to verify the participant's channel identity and subscription status for the required contest channel. Google user data is not sold, shared for advertising, or used for unrelated purposes.</p>

@@ -33,7 +33,7 @@ interface AutoCheckResponse {
     can_register: boolean;
     is_registered: boolean;
     conditions: Array<{
-        type: 'telegram' | 'youtube' | 'twitch' | 'kick';
+        type: 'telegram' | 'youtube' | 'tiktok' | 'instagram';
         id: string | number;
         title: string;
         username?: string | null;
@@ -81,7 +81,7 @@ export const RegistrationPage: React.FC = () => {
     const [revealedWinners, setRevealedWinners] = useState<number>(0);
     const [drawComplete, setDrawComplete] = useState(false);
     const [prizesOpen, setPrizesOpen] = useState(false);
-    const [pendingExternalAuth, setPendingExternalAuth] = useState<'youtube' | 'twitch' | 'kick' | null>(null);
+    const [pendingExternalAuth, setPendingExternalAuth] = useState<'youtube' | 'tiktok' | 'instagram' | null>(null);
 
     const contestId = searchParams.get('contest_id');
 
@@ -114,7 +114,7 @@ export const RegistrationPage: React.FC = () => {
         if (pendingExternalAuth === condition.type && !condition.met) {
             return condition.connected ? t(language, 'checkingConnection') : t(language, 'waitingAuth');
         }
-        if (condition.type === 'kick' && !condition.met) {
+        if (condition.type === 'instagram' && !condition.met) {
             if (condition.verification_status === 'unverified') {
                 return t(language, 'conditionUnverified')
             }
@@ -349,24 +349,24 @@ export const RegistrationPage: React.FC = () => {
                 setPendingExternalAuth('youtube');
                 tg.openLink(`${window.location.origin}/api/youtube/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`);
             }
-        } else if (condition.type === 'twitch') {
+        } else if (condition.type === 'tiktok') {
             const target = condition.id.toString().trim();
             if (condition.connected) {
-                const url = target.startsWith('http') ? target : `https://www.twitch.tv/${target}`;
+                const url = target.startsWith('http') ? target : `https://www.tiktok.com/@${target.replace(/^@/, '')}`;
                 tg.openLink(url);
             } else {
-                setPendingExternalAuth('twitch');
-                tg.openLink(`${window.location.origin}/api/twitch/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`);
+                setPendingExternalAuth('tiktok');
+                tg.openLink(`${window.location.origin}/api/tiktok/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`);
             }
-        } else if (condition.type === 'kick') {
+        } else if (condition.type === 'instagram') {
             const target = condition.id.toString().trim();
             if (condition.connected) {
-                const url = target.startsWith('http') ? target : `https://kick.com/${target}`;
+                const url = target.startsWith('http') ? target : `https://instagram.com/${target}`;
                 tg.openLink(url);
             } else {
-                setPendingExternalAuth('kick');
+                setPendingExternalAuth('instagram');
                 openLink(
-                    `${window.location.origin}/api/kick/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`,
+                    `${window.location.origin}/api/instagram/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`,
                     { try_browser: 'chrome' }
                 );
             }
@@ -733,7 +733,7 @@ export const RegistrationPage: React.FC = () => {
                                             </div>
                                             <div className="space-y-1">
                                                 <p className="text-sm font-semibold text-white">
-                                                    {t(language, 'finishAuth', { service: pendingExternalAuth === 'kick' ? 'Kick' : pendingExternalAuth === 'youtube' ? 'YouTube' : 'Twitch' })}
+                                                    {t(language, 'finishAuth', { service: pendingExternalAuth === 'instagram' ? 'Instagram' : pendingExternalAuth === 'youtube' ? 'YouTube' : 'TikTok' })}
                                                 </p>
                                                 <p className="text-xs text-white/60">
                                                     {t(language, 'autoCheckHint')}
@@ -771,12 +771,12 @@ export const RegistrationPage: React.FC = () => {
                                         isConnected={condition.connected}
                                         statusText={getConditionStatusText(condition)}
                                         actionLabel={
-                                            condition.type === 'kick'
-                                                ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} Kick`
+                                            condition.type === 'instagram'
+                                                ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} Instagram`
                                                 : condition.type === 'youtube'
                                                     ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} YouTube`
-                                                    : condition.type === 'twitch'
-                                                        ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} Twitch`
+                                                    : condition.type === 'tiktok'
+                                                        ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} TikTok`
                                                         : undefined
                                         }
                                         onAction={() => handleConditionAction(condition)}

@@ -12,7 +12,7 @@ from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
 from shared.services.youtube_service import YouTubeService
-from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, KickChannel, Participant, AdminAction, ForumTopic
+from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, InstagramChannel, Participant, AdminAction, ForumTopic
 from database.models.contest import ContestStatus, ContestDrawMethod
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -66,12 +66,12 @@ class ContestCreate(BaseModel):
     require_youtube_subscription: bool = False  # Требовать подписку на YouTube канал
     youtube_subscription_days_required: int = 0  # Минимальное количество дней подписки
     youtube_channel_id: Optional[str] = None  # ID YouTube канала (UC...)
-    require_twitch_follow: bool = False  # Требовать фолловинг на Twitch
-    twitch_follow_days_required: int = 0
-    twitch_channel_id: Optional[str] = None
-    require_kick_follow: bool = False  # Требовать фолловинг на Kick
-    kick_follow_days_required: int = 0
-    kick_channel_id: Optional[str] = None
+    require_tiktok_follow: bool = False  # Требовать фолловинг на TikTok
+    tiktok_follow_days_required: int = 0
+    tiktok_channel_id: Optional[str] = None
+    require_instagram_follow: bool = False  # Требовать фолловинг на Instagram
+    instagram_follow_days_required: int = 0
+    instagram_channel_id: Optional[str] = None
     message_thread_id: Optional[int] = None
 
 
@@ -82,8 +82,8 @@ class YoutubeChannelCreate(BaseModel):
     description: Optional[str] = None
 
 
-class KickChannelCreate(BaseModel):
-    """Модель создания Kick канала"""
+class InstagramChannelCreate(BaseModel):
+    """Модель создания Instagram канала"""
     channel_id: str
     title: Optional[str] = None
     description: Optional[str] = None
@@ -641,12 +641,12 @@ async def get_contests(
             "require_youtube_subscription": bool(contest.youtube_channel_id),
             "youtube_subscription_days_required": contest.youtube_subscription_days_required,
             "youtube_channel_id": contest.youtube_channel_id,
-            "require_twitch_follow": bool(contest.twitch_channel_id),
-            "twitch_follow_days_required": contest.twitch_follow_days_required,
-            "twitch_channel_id": contest.twitch_channel_id,
-            "require_kick_follow": bool(contest.kick_channel_id),
-            "kick_follow_days_required": contest.kick_follow_days_required,
-            "kick_channel_id": contest.kick_channel_id,
+            "require_tiktok_follow": bool(contest.tiktok_channel_id),
+            "tiktok_follow_days_required": contest.tiktok_follow_days_required,
+            "tiktok_channel_id": contest.tiktok_channel_id,
+            "require_instagram_follow": bool(contest.instagram_channel_id),
+            "instagram_follow_days_required": contest.instagram_follow_days_required,
+            "instagram_channel_id": contest.instagram_channel_id,
             "prizes": [
                 {
                     "id": p.id,
@@ -683,12 +683,12 @@ async def create_contest(
     require_youtube_subscription: bool = Form(False),
     youtube_subscription_days_required: int = Form(0),
     youtube_channel_id: Optional[str] = Form(None),
-    require_twitch_follow: bool = Form(False),
-    twitch_follow_days_required: int = Form(0),
-    twitch_channel_id: Optional[str] = Form(None),
-    require_kick_follow: bool = Form(False),
-    kick_follow_days_required: int = Form(0),
-    kick_channel_id: Optional[str] = Form(None),
+    require_tiktok_follow: bool = Form(False),
+    tiktok_follow_days_required: int = Form(0),
+    tiktok_channel_id: Optional[str] = Form(None),
+    require_instagram_follow: bool = Form(False),
+    instagram_follow_days_required: int = Form(0),
+    instagram_channel_id: Optional[str] = Form(None),
     message_thread_id: Optional[int] = Form(None),
     post_to_sponsors: bool = Form(False),
     image: Optional[UploadFile] = File(None),
@@ -708,10 +708,10 @@ async def create_contest(
     @param sponsors JSON строка со спонсорами
     @param require_youtube_subscription требуется ли подписка на YouTube
     @param youtube_subscription_days_required минимальное количество дней подписки
-    @param require_twitch_follow требуется ли фолловинг Twitch
-    @param twitch_follow_days_required минимальное количество дней фолловинга Twitch
-    @param require_kick_follow требуется ли фолловинг Kick
-    @param kick_follow_days_required минимальное количество дней фолловинга Kick
+    @param require_tiktok_follow требуется ли фолловинг TikTok
+    @param tiktok_follow_days_required минимальное количество дней фолловинга TikTok
+    @param require_instagram_follow требуется ли фолловинг Instagram
+    @param instagram_follow_days_required минимальное количество дней фолловинга Instagram
     @param image загружаемое изображение
     @param db сессия БД
     @param admin_id ID администратора
@@ -829,24 +829,24 @@ async def create_contest(
                 detail="Для этого конкурса требуется подписка на YouTube канал, но YouTube канал не выбран."
             )
 
-    final_twitch_channel_id = None
-    if require_twitch_follow:
-        if twitch_channel_id and twitch_channel_id.strip():
-            final_twitch_channel_id = twitch_channel_id.strip()
+    final_tiktok_channel_id = None
+    if require_tiktok_follow:
+        if tiktok_channel_id and tiktok_channel_id.strip():
+            final_tiktok_channel_id = tiktok_channel_id.strip()
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Для этого конкурса требуется Twitch-канал, но он не указан."
+                detail="Для этого конкурса требуется TikTok-канал, но он не указан."
             )
 
-    final_kick_channel_id = None
-    if require_kick_follow:
-        if kick_channel_id and kick_channel_id.strip():
-            final_kick_channel_id = kick_channel_id.strip()
+    final_instagram_channel_id = None
+    if require_instagram_follow:
+        if instagram_channel_id and instagram_channel_id.strip():
+            final_instagram_channel_id = instagram_channel_id.strip()
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Для этого конкурса требуется Kick-канал, но он не указан."
+                detail="Для этого конкурса требуется Instagram-канал, но он не указан."
             )
 
     final_message_thread_id = message_thread_id if message_thread_id and message_thread_id > 0 else None
@@ -879,10 +879,10 @@ async def create_contest(
         description=description,
         youtube_channel_id=final_youtube_channel_id,
         youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
-        twitch_channel_id=final_twitch_channel_id,
-        twitch_follow_days_required=twitch_follow_days_required if require_twitch_follow else 0,
-        kick_channel_id=final_kick_channel_id,
-        kick_follow_days_required=kick_follow_days_required if require_kick_follow else 0,
+        tiktok_channel_id=final_tiktok_channel_id,
+        tiktok_follow_days_required=tiktok_follow_days_required if require_tiktok_follow else 0,
+        instagram_channel_id=final_instagram_channel_id,
+        instagram_follow_days_required=instagram_follow_days_required if require_instagram_follow else 0,
         image_path=image_path,
         post_to_sponsors=post_to_sponsors
     )
@@ -924,8 +924,8 @@ async def create_contest(
             "message_thread_id": contest.message_thread_id,
             "sponsors": sponsors_data or [],
             "require_youtube_subscription": require_youtube_subscription,
-            "require_twitch_follow": require_twitch_follow,
-            "require_kick_follow": require_kick_follow,
+            "require_tiktok_follow": require_tiktok_follow,
+            "require_instagram_follow": require_instagram_follow,
         }
     )
     await db.commit()
@@ -979,10 +979,10 @@ async def duplicate_contest(
         description=source.description,
         youtube_channel_id=source.youtube_channel_id,
         youtube_subscription_days_required=source.youtube_subscription_days_required,
-        twitch_channel_id=source.twitch_channel_id,
-        twitch_follow_days_required=source.twitch_follow_days_required,
-        kick_channel_id=source.kick_channel_id,
-        kick_follow_days_required=source.kick_follow_days_required,
+        tiktok_channel_id=source.tiktok_channel_id,
+        tiktok_follow_days_required=source.tiktok_follow_days_required,
+        instagram_channel_id=source.instagram_channel_id,
+        instagram_follow_days_required=source.instagram_follow_days_required,
         image_path=source.image_path,
         post_to_sponsors=source.post_to_sponsors,
         publish_at=None,
@@ -1925,15 +1925,15 @@ async def delete_youtube_channel(
     return {"success": True}
 
 
-@router.get("/kick-channels")
-async def get_kick_channels(
+@router.get("/instagram-channels")
+async def get_instagram_channels(
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin)
 ):
     """
-    Получить список Kick каналов
+    Получить список Instagram каналов
     """
-    result = await db.execute(select(KickChannel))
+    result = await db.execute(select(InstagramChannel))
     channels = result.scalars().all()
 
     return [
@@ -1946,33 +1946,33 @@ async def get_kick_channels(
     ]
 
 
-@router.post("/kick-channels")
-async def add_kick_channel(
-    data: KickChannelCreate,
+@router.post("/instagram-channels")
+async def add_instagram_channel(
+    data: InstagramChannelCreate,
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin)
 ):
     """
-    Добавить Kick канал
+    Добавить Instagram канал
     """
     channel_id = data.channel_id.strip()
     if not channel_id:
-        raise HTTPException(status_code=400, detail="ID Kick канала не может быть пустым")
+        raise HTTPException(status_code=400, detail="ID Instagram канала не может быть пустым")
 
-    channel_id = channel_id.replace("https://kick.com/", "").replace("http://kick.com/", "").strip("/")
+    channel_id = channel_id.replace("https://instagram.com/", "").replace("http://instagram.com/", "").strip("/")
 
     result = await db.execute(
-        select(KickChannel).where(KickChannel.channel_id == channel_id)
+        select(InstagramChannel).where(InstagramChannel.channel_id == channel_id)
     )
     existing = result.scalar_one_or_none()
     if existing:
-        raise HTTPException(status_code=400, detail="Такой Kick канал уже добавлен")
+        raise HTTPException(status_code=400, detail="Такой Instagram канал уже добавлен")
 
     title = (data.title or channel_id).strip()
     if not title:
-        raise HTTPException(status_code=400, detail="Название Kick канала не может быть пустым")
+        raise HTTPException(status_code=400, detail="Название Instagram канала не может быть пустым")
 
-    channel = KickChannel(
+    channel = InstagramChannel(
         channel_id=channel_id,
         title=title,
         description=data.description
@@ -1983,8 +1983,8 @@ async def add_kick_channel(
     await audit_admin(
         db,
         admin_id=admin_id,
-        action_type="kick_channel_created",
-        target_type="kick_channel",
+        action_type="instagram_channel_created",
+        target_type="instagram_channel",
         target_id=channel.channel_id,
         payload={"title": channel.title}
     )
@@ -1997,30 +1997,30 @@ async def add_kick_channel(
     }
 
 
-@router.delete("/kick-channels/{channel_id}")
-async def delete_kick_channel(
+@router.delete("/instagram-channels/{channel_id}")
+async def delete_instagram_channel(
     channel_id: str,
     db: AsyncSession = Depends(get_db),
     admin_id: int = Depends(verify_admin)
 ):
     """
-    Удалить Kick канал
+    Удалить Instagram канал
     """
     result = await db.execute(
-        select(KickChannel).where(KickChannel.channel_id == channel_id)
+        select(InstagramChannel).where(InstagramChannel.channel_id == channel_id)
     )
     channel = result.scalar_one_or_none()
 
     if not channel:
-        raise HTTPException(status_code=404, detail="Kick канал не найден")
+        raise HTTPException(status_code=404, detail="Instagram канал не найден")
 
     await db.delete(channel)
     await db.commit()
     await audit_admin(
         db,
         admin_id=admin_id,
-        action_type="kick_channel_deleted",
-        target_type="kick_channel",
+        action_type="instagram_channel_deleted",
+        target_type="instagram_channel",
         target_id=channel.channel_id,
         payload={"title": channel.title}
     )
