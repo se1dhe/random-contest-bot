@@ -12,7 +12,7 @@ from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
 from shared.services.youtube_service import YouTubeService
-from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, InstagramChannel, Participant, AdminAction, ForumTopic
+from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, TikTokChannel, InstagramChannel, Participant, AdminAction, ForumTopic
 from database.models.contest import ContestStatus, ContestDrawMethod
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -77,6 +77,13 @@ class ContestCreate(BaseModel):
 
 class YoutubeChannelCreate(BaseModel):
     """Модель создания YouTube канала"""
+    channel_id: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+class TikTokChannelCreate(BaseModel):
+    """Модель создания TikTok аккаунта"""
     channel_id: str
     title: Optional[str] = None
     description: Optional[str] = None
@@ -1922,6 +1929,123 @@ async def delete_youtube_channel(
     )
     await db.commit()
     
+    return {"success": True}
+
+
+@router.get("/tiktok-channels")
+async def get_tiktok_channels(
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Получить список TikTok аккаунтов
+    """
+    result = await db.execute(select(TikTokChannel))
+    channels = result.scalars().all()
+
+    return [
+        {
+            "channel_id": c.channel_id,
+            "title": c.title,
+            "description": c.description
+        }
+        for c in channels
+    ]
+
+
+@router.post("/tiktok-channels")
+async def add_tiktok_channel(
+    data: TikTokChannelCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Добавить TikTok аккаунт
+    """
+    channel_id = data.channel_id.strip()
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="TikTok аккаунт не может быть пустым")
+
+    channel_id = (
+        channel_id
+        .replace("https://www.tiktok.com/@", "")
+        .replace("https://tiktok.com/@", "")
+        .replace("https://www.tiktok.com/", "")
+        .replace("https://tiktok.com/", "")
+        .replace("www.tiktok.com/@", "")
+        .replace("tiktok.com/@", "")
+        .replace("www.tiktok.com/", "")
+        .replace("tiktok.com/", "")
+        .replace("@", "")
+        .strip("/")
+        .strip()
+    )
+
+    result = await db.execute(
+        select(TikTokChannel).where(TikTokChannel.channel_id == channel_id)
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Такой TikTok аккаунт уже добавлен")
+
+    title = (data.title or f"@{channel_id}").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Название TikTok аккаунта не может быть пустым")
+
+    channel = TikTokChannel(
+        channel_id=channel_id,
+        title=title,
+        description=data.description
+    )
+    db.add(channel)
+    await db.commit()
+    await db.refresh(channel)
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="tiktok_channel_created",
+        target_type="tiktok_channel",
+        target_id=channel.channel_id,
+        payload={"title": channel.title}
+    )
+    await db.commit()
+
+    return {
+        "channel_id": channel.channel_id,
+        "title": channel.title,
+        "description": channel.description
+    }
+
+
+@router.delete("/tiktok-channels/{channel_id}")
+async def delete_tiktok_channel(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin)
+):
+    """
+    Удалить TikTok аккаунт
+    """
+    result = await db.execute(
+        select(TikTokChannel).where(TikTokChannel.channel_id == channel_id)
+    )
+    channel = result.scalar_one_or_none()
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="TikTok аккаунт не найден")
+
+    await db.delete(channel)
+    await db.commit()
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="tiktok_channel_deleted",
+        target_type="tiktok_channel",
+        target_id=channel.channel_id,
+        payload={"title": channel.title}
+    )
+    await db.commit()
+
     return {"success": True}
 
 

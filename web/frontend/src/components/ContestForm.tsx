@@ -39,6 +39,11 @@ interface AdminYoutubeChannel {
     title: string;
     description?: string;
 }
+interface AdminTikTokChannel {
+    channel_id: string;
+    title: string;
+    description?: string;
+}
 interface AdminInstagramChannel {
     channel_id: string;
     title: string;
@@ -150,6 +155,18 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         queryKey: ['admin_youtube_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/youtube-channels', {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!initData,
+    });
+
+    const { data: tiktokChannels } = useQuery<AdminTikTokChannel[]>({
+        queryKey: ['admin_tiktok_channels', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/admin/tiktok-channels', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -681,15 +698,22 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                     {requireTikTok && (
                                         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
                                             <div>
-                                                <label className="form-label text-[10px]">TikTok канал (логин или ID)</label>
-                                                <input
-                                                    className="form-input py-2 text-xs"
+                                                <label className="form-label text-[10px]">TikTok аккаунт</label>
+                                                <select
+                                                    className="form-select text-xs py-2 bg-white/5 border-white/10 focus:border-white/30"
                                                     value={tiktokChannelId}
                                                     onChange={e => setTikTokChannelId(e.target.value)}
-                                                    placeholder="например: se1dhe"
-                                                />
+                                                >
+                                                    <option value="">Выберите аккаунт...</option>
+                                                    {tiktokChannels?.map(c => (
+                                                        <option key={c.channel_id} value={c.channel_id}>{c.title}</option>
+                                                    ))}
+                                                </select>
+                                                {!tiktokChannels?.length && (
+                                                    <div className="mt-1 text-[8px] text-violet-300">Сначала добавьте TikTok аккаунты в разделе «Каналы».</div>
+                                                )}
                                                 {tiktokChannelMissing && (
-                                                    <div className="mt-1 text-[10px] text-red-300">Укажите TikTok-канал для проверки фолловинга.</div>
+                                                    <div className="mt-1 text-[10px] text-red-300">Укажите TikTok аккаунт для проверки фолловинга.</div>
                                                 )}
                                             </div>
                                             <div>
