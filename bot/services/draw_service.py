@@ -1,7 +1,7 @@
 """
 Сервис для розыгрыша призов
 """
-import random
+import secrets
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -77,7 +77,7 @@ class DrawService:
         @param count количество победителей
         @return список победителей
         """
-        return random.sample(participants, min(count, len(participants)))
+        return secrets.SystemRandom().sample(participants, min(count, len(participants)))
     
     def _draw_by_activity(self, participants: List[Participant], count: int) -> List[Participant]:
         """

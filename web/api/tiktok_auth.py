@@ -34,6 +34,7 @@ from web.api.oauth_common import (
     render_oauth_success,
     start_oauth_flow,
 )
+from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/tiktok", tags=["tiktok"])
 logger = logging.getLogger(__name__)
@@ -56,10 +57,13 @@ async def tiktok_status():
 async def tiktok_auth(
     contest_id: int = Query(..., description="ID конкурса"),
     user_id: int = Query(..., description="ID пользователя Telegram"),
+    auth_user_id: int = Depends(verify_telegram_user),
 ):
     """Начать OAuth flow TikTok."""
     if not is_tiktok_oauth_configured():
         raise HTTPException(status_code=500, detail="TikTok OAuth не настроен на сервере")
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя подключать TikTok для другого пользователя")
 
     return await start_oauth_flow(
         provider=PROVIDER,
@@ -173,9 +177,12 @@ async def tiktok_callback(
 async def tiktok_check_auth(
     user_id: int = Query(..., description="ID пользователя"),
     contest_id: int = Query(..., description="ID конкурса"),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Проверка успешной TikTok авторизации (polling)."""
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя проверять OAuth статус другого пользователя")
     return await build_oauth_check_auth_response(
         user_id=user_id,
         contest_id=contest_id,

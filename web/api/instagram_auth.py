@@ -37,6 +37,7 @@ from web.api.oauth_common import (
     render_oauth_error,
     render_oauth_success,
 )
+from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/instagram", tags=["instagram"])
 logger = logging.getLogger(__name__)
@@ -63,10 +64,13 @@ async def instagram_status():
 async def instagram_auth(
     contest_id: int = Query(..., description="ID конкурса"),
     user_id: int = Query(..., description="ID пользователя Telegram"),
+    auth_user_id: int = Depends(verify_telegram_user),
 ):
     """Начать OAuth flow Instagram."""
     if not is_instagram_oauth_configured():
         raise HTTPException(status_code=500, detail="Instagram OAuth не настроен на сервере")
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя подключать Instagram для другого пользователя")
 
     state = secrets.token_urlsafe(32)
     code_verifier = generate_instagram_code_verifier()
@@ -233,9 +237,12 @@ async def instagram_callback_post(
 async def instagram_check_auth(
     user_id: int = Query(..., description="ID пользователя"),
     contest_id: int = Query(..., description="ID конкурса"),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Проверка успешной Instagram авторизации (polling)."""
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя проверять OAuth статус другого пользователя")
     return await build_oauth_check_auth_response(
         user_id=user_id,
         contest_id=contest_id,

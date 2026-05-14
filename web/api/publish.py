@@ -19,6 +19,13 @@ router = APIRouter(prefix="/api/publish", tags=["publish"])
 logger = logging.getLogger(__name__)
 
 
+def require_owned_contest(contest, user_id: int) -> None:
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    if not config.is_admin(user_id) and getattr(contest, "owner_user_id", None) != int(user_id):
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+
 @router.post("/contest/{contest_id}")
 async def publish_contest(
     contest_id: int,
@@ -43,6 +50,7 @@ async def publish_contest(
     if not contest:
         await release_lock(lock_key)
         raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned_contest(contest, user_id)
 
     if contest.status == ContestStatus.ACTIVE and contest.message_id:
         await release_lock(lock_key)
@@ -133,6 +141,7 @@ async def publish_results(
     if not contest:
         await release_lock(lock_key)
         raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned_contest(contest, user_id)
 
     if contest.status == ContestStatus.RESULTS_PUBLISHED:
         await release_lock(lock_key)

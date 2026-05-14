@@ -13,6 +13,23 @@ from shared.services.redis_service import get_redis
 router = APIRouter(prefix="/api/admin/analytics", tags=["admin-analytics"])
 
 
+def _contest_scope(admin_id: int):
+    if config.is_admin(admin_id):
+        return None
+    return Contest.owner_user_id == int(admin_id)
+
+
+def _apply_contest_scope(query, admin_id: int):
+    scoped = _contest_scope(admin_id)
+    return query.where(scoped) if scoped is not None else query
+
+
+def _apply_participant_scope(query, admin_id: int):
+    if config.is_admin(admin_id):
+        return query
+    return query.join(Contest, Participant.contest_id == Contest.id).where(Contest.owner_user_id == int(admin_id))
+
+
 def _serialize_issue_contest(contest: Contest, issue_type: str, detail: str, actionability: str) -> dict:
     return {
         "contest_id": contest.id,
@@ -31,19 +48,29 @@ async def get_analytics_overview(
 ):
     """Get aggregated analytics"""
     # Total contests
-    res_contests = await db.execute(select(func.count(Contest.id)))
+    res_contests = await db.execute(_apply_contest_scope(select(func.count(Contest.id)), admin_id))
     total_contests = res_contests.scalar() or 0
 
     # Active contests
-    res_active = await db.execute(select(func.count(Contest.id)).where(Contest.status == ContestStatus.ACTIVE))
+    res_active = await db.execute(
+        _apply_contest_scope(
+            select(func.count(Contest.id)).where(Contest.status == ContestStatus.ACTIVE),
+            admin_id,
+        )
+    )
     active_contests = res_active.scalar() or 0
     
     # Total participants
-    res_parts = await db.execute(select(func.count(Participant.id)))
+    res_parts = await db.execute(_apply_participant_scope(select(func.count(Participant.id)), admin_id))
     total_participants = res_parts.scalar() or 0
     
     # Completed contests
-    res_completed = await db.execute(select(func.count(Contest.id)).where(Contest.status == ContestStatus.FINISHED))
+    res_completed = await db.execute(
+        _apply_contest_scope(
+            select(func.count(Contest.id)).where(Contest.status == ContestStatus.FINISHED),
+            admin_id,
+        )
+    )
     completed_contests = res_completed.scalar() or 0
     
     return {
@@ -77,6 +104,7 @@ async def get_growth_data(
         .group_by(day_bucket)
         .order_by(day_bucket)
     )
+    query = _apply_participant_scope(query, admin_id)
 
     result = await db.execute(query)
     rows = result.all()
@@ -109,25 +137,25 @@ async def get_health_data(
     now_db = now_result.scalar()
 
     active_without_message_id_result = await db.execute(
-        select(func.count(Contest.id)).where(
+        _apply_contest_scope(select(func.count(Contest.id)).where(
             Contest.status == ContestStatus.ACTIVE,
             Contest.message_id.is_(None),
-        )
+        ), admin_id)
     )
     results_without_message_id_result = await db.execute(
-        select(func.count(Contest.id)).where(
+        _apply_contest_scope(select(func.count(Contest.id)).where(
             Contest.status == ContestStatus.RESULTS_PUBLISHED,
             Contest.results_message_id.is_(None),
-        )
+        ), admin_id)
     )
     overdue_scheduled_result = await db.execute(
-        select(func.count(Contest.id)).where(
+        _apply_contest_scope(select(func.count(Contest.id)).where(
             Contest.status == ContestStatus.DRAFT,
             Contest.publish_at.is_not(None),
             Contest.publish_at <= now_db,
-        )
+        ), admin_id)
     )
-    finished_without_winners_result = await db.execute(
+    finished_without_winners_query = (
         select(func.count(func.distinct(Contest.id)))
         .select_from(Contest)
         .join(Prize, Prize.contest_id == Contest.id)
@@ -136,6 +164,7 @@ async def get_health_data(
             Prize.winner_user_id.is_(None),
         )
     )
+    finished_without_winners_result = await db.execute(_apply_contest_scope(finished_without_winners_query, admin_id))
 
     database_status = {
         "status": "ok",
@@ -180,7 +209,7 @@ async def get_health_data(
 
     problematic_contests: list[dict] = []
 
-    active_without_message_rows = await db.execute(
+    active_without_message_query = (
         select(Contest)
         .options(selectinload(Contest.channel))
         .where(
@@ -189,6 +218,7 @@ async def get_health_data(
         )
         .limit(5)
     )
+    active_without_message_rows = await db.execute(_apply_contest_scope(active_without_message_query, admin_id))
     for contest in active_without_message_rows.scalars().all():
         problematic_contests.append(
             _serialize_issue_contest(
@@ -199,7 +229,7 @@ async def get_health_data(
             )
         )
 
-    results_without_message_rows = await db.execute(
+    results_without_message_query = (
         select(Contest)
         .options(selectinload(Contest.channel))
         .where(
@@ -208,6 +238,7 @@ async def get_health_data(
         )
         .limit(5)
     )
+    results_without_message_rows = await db.execute(_apply_contest_scope(results_without_message_query, admin_id))
     for contest in results_without_message_rows.scalars().all():
         problematic_contests.append(
             _serialize_issue_contest(
@@ -218,7 +249,7 @@ async def get_health_data(
             )
         )
 
-    overdue_scheduled_rows = await db.execute(
+    overdue_scheduled_query = (
         select(Contest)
         .options(selectinload(Contest.channel))
         .where(
@@ -228,6 +259,7 @@ async def get_health_data(
         )
         .limit(5)
     )
+    overdue_scheduled_rows = await db.execute(_apply_contest_scope(overdue_scheduled_query, admin_id))
     for contest in overdue_scheduled_rows.scalars().all():
         problematic_contests.append(
             _serialize_issue_contest(
@@ -238,7 +270,7 @@ async def get_health_data(
             )
         )
 
-    finished_without_winners_rows = await db.execute(
+    finished_without_winners_rows_query = (
         select(Contest)
         .options(selectinload(Contest.channel))
         .join(Prize, Prize.contest_id == Contest.id)
@@ -249,6 +281,7 @@ async def get_health_data(
         .distinct()
         .limit(5)
     )
+    finished_without_winners_rows = await db.execute(_apply_contest_scope(finished_without_winners_rows_query, admin_id))
     for contest in finished_without_winners_rows.scalars().all():
         participants_result = await db.execute(
             select(func.count(Participant.id)).where(Participant.contest_id == contest.id)

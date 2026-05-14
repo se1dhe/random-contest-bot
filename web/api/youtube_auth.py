@@ -24,6 +24,7 @@ from shared.services.redis_service import (
     store_completed_oauth_auth,
     get_completed_oauth_auth,
 )
+from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/youtube", tags=["youtube"])
 logger = logging.getLogger(__name__)
@@ -283,7 +284,8 @@ def render_success_page_with_redirect(channel_title: str, redirect_url: str, con
 async def youtube_auth(
     contest_id: int = Query(..., description="ID конкурса"),
     user_id: int = Query(..., description="ID пользователя Telegram"),
-    _auth: Optional[str] = Query(None, alias="_auth", description="Telegram initData")
+    _auth: Optional[str] = Query(None, alias="_auth", description="Telegram initData"),
+    auth_user_id: int = Depends(verify_telegram_user),
 ):
     """
     Инициировать OAuth авторизацию через YouTube.
@@ -294,6 +296,8 @@ async def youtube_auth(
             status_code=500,
             detail="YouTube OAuth не настроен на сервере"
         )
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя подключать YouTube для другого пользователя")
     
     try:
         # Генерируем уникальный state для защиты от CSRF
@@ -491,6 +495,7 @@ async def youtube_callback(
 @router.delete("/disconnect")
 async def disconnect_youtube(
     user_id: int = Query(..., description="ID пользователя"),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -501,6 +506,9 @@ async def disconnect_youtube(
     @return результат отвязки
     """
     try:
+        if int(user_id) != int(auth_user_id):
+            raise HTTPException(status_code=403, detail="Нельзя отвязать YouTube другого пользователя")
+
         result = await db.execute(
             select(YouTubeCredentials).where(YouTubeCredentials.user_id == user_id)
         )
@@ -535,6 +543,7 @@ async def disconnect_youtube(
 async def check_auth_status(
     user_id: int = Query(..., description="ID пользователя"),
     contest_id: int = Query(..., description="ID конкурса"),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -542,6 +551,9 @@ async def check_auth_status(
     Используется для polling со стороны клиента.
     Сначала проверяет БД, потом временное хранилище.
     """
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя проверять OAuth статус другого пользователя")
+
     # Сначала проверяем БД на наличие сохраненных credentials
     result = await db.execute(
         select(YouTubeCredentials).where(YouTubeCredentials.user_id == user_id)

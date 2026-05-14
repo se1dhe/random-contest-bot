@@ -16,6 +16,7 @@ from shared.services.redis_service import get_cached_channel_invite_link, cache_
 from aiogram import Bot
 from shared.config import config
 from shared.i18n import day_unit, normalize_language, translate
+from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/contests", tags=["contests"])
 logger = logging.getLogger(__name__)
@@ -227,6 +228,7 @@ async def get_contest_info(
 async def check_subscription(
     contest_id: int,
     user_id: int = Query(...),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
     telegram_service: TelegramService = Depends(get_telegram_service)
 ):
@@ -239,6 +241,9 @@ async def check_subscription(
     @param telegram_service сервис Telegram
     @return статус подписок
     """
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя проверять подписки другого пользователя")
+
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
     
@@ -300,6 +305,7 @@ async def check_subscription(
 async def auto_check(
     contest_id: int,
     user_id: int = Query(...),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
     telegram_service: TelegramService = Depends(get_telegram_service)
 ):
@@ -312,6 +318,9 @@ async def auto_check(
     @param telegram_service сервис Telegram
     @return статус всех условий и информация о регистрации
     """
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя проверять условия другого пользователя")
+
     service = ContestService(db)
     participant_service = ParticipantService(db)
     contest = await service.get_contest_by_id(contest_id)
@@ -455,6 +464,7 @@ async def register_participant(
     data: Optional[dict] = None,
     user_id: Optional[int] = Query(None),
     username: Optional[str] = Query(None),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
     telegram_service: TelegramService = Depends(get_telegram_service)
 ):
@@ -471,7 +481,7 @@ async def register_participant(
     """
     # Извлекаем user_id из разных источников (фронтенд шлет в query params)
     body_user_id = data.get("user_id") if data else None
-    user_id = user_id or body_user_id
+    user_id = auth_user_id
     
     body_username = data.get("username") if data else None
     username = username or body_username
@@ -658,7 +668,7 @@ async def register_participant(
     first_name = None
     last_name = None
     
-    auth_data = request.query_params.get("_auth")
+    auth_data = request.query_params.get("_auth") or request.headers.get("X-Telegram-Init-Data")
     if auth_data:
         try:
             from urllib.parse import parse_qs, unquote
@@ -804,6 +814,7 @@ async def get_winners(
 async def get_results_info(
     contest_id: int,
     user_id: int = Query(...),
+    auth_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -814,6 +825,9 @@ async def get_results_info(
     @param db сессия БД
     @return информация о результатах и статусе пользователя
     """
+    if int(user_id) != int(auth_user_id):
+        raise HTTPException(status_code=403, detail="Нельзя получать результаты другого пользователя")
+
     service = ContestService(db)
     participant_service = ParticipantService(db)
     draw_service = DrawService(db)

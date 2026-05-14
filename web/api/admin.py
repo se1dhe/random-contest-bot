@@ -548,9 +548,7 @@ async def delete_channel(
         select(Channel).where(Channel.channel_id == channel_id)
     )
     channel = result.scalar_one_or_none()
-    
-    if not channel:
-        raise HTTPException(status_code=404, detail="Канал не найден")
+    require_owned(channel, admin_id, "Канал не найден")
     
     channel.is_active = False
     await db.commit()
@@ -1498,6 +1496,10 @@ async def get_contest_history(
     """
     Получить историю действий по конкурсу
     """
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    require_owned(contest, admin_id, "Конкурс не найден")
+
     result = await db.execute(
         select(AdminAction)
         .options(selectinload(AdminAction.contest))
@@ -1518,11 +1520,16 @@ async def get_recent_admin_actions(
     """
     Получить последние действия администратора по всему проекту
     """
-    result = await db.execute(
+    query = (
         select(AdminAction)
         .options(selectinload(AdminAction.contest))
         .order_by(AdminAction.created_at.desc())
         .limit(limit)
+    )
+    if not is_super_admin(admin_id):
+        query = query.where(AdminAction.actor_user_id == int(admin_id))
+    result = await db.execute(
+        query
     )
     actions = result.scalars().all()
     return [serialize_admin_action(action) for action in actions]
@@ -1688,6 +1695,11 @@ async def bulk_publish_now(
             if not contest:
                 skipped.append({"contest_id": contest_id, "reason": "not_found"})
                 continue
+            try:
+                require_owned(contest, admin_id, "Конкурс не найден")
+            except HTTPException:
+                skipped.append({"contest_id": contest_id, "reason": "not_found"})
+                continue
             if contest.status == ContestStatus.ACTIVE and contest.message_id:
                 skipped.append({"contest_id": contest_id, "reason": "already_published"})
                 continue
@@ -1747,6 +1759,11 @@ async def bulk_cancel_schedule(
     for contest_id in contest_ids:
         contest = await contest_service.get_contest_by_id(contest_id)
         if not contest:
+            skipped.append({"contest_id": contest_id, "reason": "not_found"})
+            continue
+        try:
+            require_owned(contest, admin_id, "Конкурс не найден")
+        except HTTPException:
             skipped.append({"contest_id": contest_id, "reason": "not_found"})
             continue
         if contest.status != ContestStatus.DRAFT:

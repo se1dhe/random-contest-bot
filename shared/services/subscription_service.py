@@ -103,6 +103,8 @@ async def activate_payment_by_external_id(
     db: AsyncSession,
     external_charge_id: str,
     provider: str = "paykassa",
+    expected_amount: Optional[int] = None,
+    expected_currency: Optional[str] = None,
 ) -> Optional[OwnerSubscription]:
     result = await db.execute(
         select(SubscriptionPayment).where(
@@ -113,6 +115,19 @@ async def activate_payment_by_external_id(
     payment = result.scalar_one_or_none()
     if not payment:
         return None
+    if expected_amount is not None and int(payment.amount) != int(expected_amount):
+        return None
+    if expected_currency is not None and payment.currency.upper() != expected_currency.upper():
+        return None
+    if payment.status == SubscriptionPaymentStatus.SUCCEEDED:
+        active_result = await db.execute(
+            select(OwnerSubscription).where(
+                OwnerSubscription.external_charge_id == external_charge_id,
+                OwnerSubscription.provider == provider,
+                OwnerSubscription.status == OwnerSubscriptionStatus.ACTIVE,
+            )
+        )
+        return active_result.scalar_one_or_none()
     return await activate_subscription(
         db,
         user_id=payment.user_id,
