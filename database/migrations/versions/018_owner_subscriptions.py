@@ -7,6 +7,7 @@ Create Date: 2026-05-14
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "018_owner_subscriptions"
@@ -17,6 +18,22 @@ depends_on = None
 
 owner_subscription_status = sa.Enum("ACTIVE", "EXPIRED", "CANCELED", name="ownersubscriptionstatus")
 subscription_payment_status = sa.Enum("CREATED", "PENDING", "SUCCEEDED", "FAILED", "CANCELED", name="subscriptionpaymentstatus")
+owner_subscription_status_column = postgresql.ENUM(
+    "ACTIVE",
+    "EXPIRED",
+    "CANCELED",
+    name="ownersubscriptionstatus",
+    create_type=False,
+)
+subscription_payment_status_column = postgresql.ENUM(
+    "CREATED",
+    "PENDING",
+    "SUCCEEDED",
+    "FAILED",
+    "CANCELED",
+    name="subscriptionpaymentstatus",
+    create_type=False,
+)
 
 
 def upgrade():
@@ -46,7 +63,7 @@ def upgrade():
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("plan_code", sa.String(length=64), nullable=False),
         sa.Column("provider", sa.String(length=32), nullable=False),
-        sa.Column("status", owner_subscription_status, nullable=False),
+        sa.Column("status", owner_subscription_status_column, nullable=False),
         sa.Column("starts_at", sa.DateTime(), nullable=False),
         sa.Column("ends_at", sa.DateTime(), nullable=True),
         sa.Column("external_charge_id", sa.String(length=255), nullable=True),
@@ -68,7 +85,7 @@ def upgrade():
         sa.Column("external_charge_id", sa.String(length=255), nullable=False),
         sa.Column("currency", sa.String(length=16), nullable=False),
         sa.Column("amount", sa.Integer(), nullable=False),
-        sa.Column("status", subscription_payment_status, nullable=False),
+        sa.Column("status", subscription_payment_status_column, nullable=False),
         sa.Column("paid_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("external_charge_id"),
