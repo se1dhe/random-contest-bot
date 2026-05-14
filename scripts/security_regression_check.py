@@ -27,6 +27,7 @@ def main() -> int:
     admin = read("web/api/admin.py")
     bot_billing = read("bot/handlers/billing.py")
     bot_contest = read("bot/handlers/contest.py")
+    bot_forum_topics = read("bot/handlers/forum_topics.py")
 
     for function_name in (
         "check_subscription",
@@ -52,6 +53,8 @@ def main() -> int:
     require("expected_amount=payment.total_amount" in bot_billing, "Telegram Stars activation must validate amount")
     require("expected_currency=payment.currency" in bot_billing, "Telegram Stars activation must validate currency")
     require("build_public_media_url" in bot_contest, "Bot publication must support public media URL fallback")
+    require('Command("topic")' in bot_forum_topics, "Forum topics must support explicit /topic registration")
+    require("message_thread_id" in bot_forum_topics, "Forum topic registration must keep Telegram thread ID")
 
     print("security regression checks passed")
     return 0

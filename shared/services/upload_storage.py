@@ -4,6 +4,8 @@ Helpers for contest media storage.
 The web service owns uploaded files. Bot services should prefer public URLs when
 they run in a separate container and cannot see the same filesystem.
 """
+from __future__ import annotations
+
 from pathlib import Path
 from urllib.parse import urljoin
 import os

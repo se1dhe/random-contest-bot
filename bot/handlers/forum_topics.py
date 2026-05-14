@@ -4,6 +4,7 @@
 import logging
 
 from aiogram import Router
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from sqlalchemy import select
 
@@ -26,8 +27,7 @@ def _topic_name_from_message(message: Message) -> str | None:
     return None
 
 
-@router.message()
-async def remember_forum_topic(message: Message) -> None:
+async def _remember_forum_topic(message: Message, explicit_name: str | None = None) -> ForumTopic | None:
     """
     Telegram Bot API не дает получить полный список топиков по запросу.
     Запоминаем топики, которые бот видит через сервисные события или сообщения.
@@ -47,10 +47,10 @@ async def remember_forum_topic(message: Message) -> None:
             "forum_topic_reopened",
         )
     )
-    if not is_topic_message and not has_topic_event:
+    if not explicit_name and not is_topic_message and not has_topic_event:
         return
 
-    name = _topic_name_from_message(message) or f"Топик #{thread_id}"
+    name = explicit_name or _topic_name_from_message(message) or f"Топик #{thread_id}"
     icon_color = getattr(getattr(message, "forum_topic_created", None), "icon_color", None)
     icon_custom_emoji_id = getattr(getattr(message, "forum_topic_created", None), "icon_custom_emoji_id", None)
 
@@ -59,7 +59,7 @@ async def remember_forum_topic(message: Message) -> None:
             select(Channel).where(Channel.channel_id == chat.id, Channel.is_active == True)
         )
         if not channel_result.scalar_one_or_none():
-            return
+            return None
 
         topic_result = await db.execute(
             select(ForumTopic).where(
@@ -70,21 +70,45 @@ async def remember_forum_topic(message: Message) -> None:
         topic = topic_result.scalar_one_or_none()
 
         if topic:
-            topic.name = name if name != f"Топик #{thread_id}" or topic.name.startswith("Топик #") else topic.name
+            topic.name = name if explicit_name or name != f"Топик #{thread_id}" or topic.name.startswith("Топик #") else topic.name
             topic.icon_color = icon_color if icon_color is not None else topic.icon_color
             topic.icon_custom_emoji_id = icon_custom_emoji_id or topic.icon_custom_emoji_id
             topic.is_active = True
         else:
-            db.add(
-                ForumTopic(
-                    chat_id=chat.id,
-                    message_thread_id=thread_id,
-                    name=name,
-                    icon_color=icon_color,
-                    icon_custom_emoji_id=icon_custom_emoji_id,
-                    is_active=True,
-                )
+            topic = ForumTopic(
+                chat_id=chat.id,
+                message_thread_id=thread_id,
+                name=name,
+                icon_color=icon_color,
+                icon_custom_emoji_id=icon_custom_emoji_id,
+                is_active=True,
             )
+            db.add(topic)
 
         await db.commit()
         logger.info("Запомнен топик Telegram: chat_id=%s thread_id=%s name=%s", chat.id, thread_id, name)
+        return topic
+
+
+@router.message(Command("topic"))
+async def register_current_topic(message: Message, command: CommandObject) -> None:
+    """
+    Явно привязать текущий forum topic к админке.
+    Нужно для старых топиков, которые были созданы до добавления бота.
+    """
+    if not getattr(message, "message_thread_id", None):
+        await message.answer("Команду /topic нужно отправить внутри нужного раздела forum-группы.")
+        return
+
+    explicit_name = (command.args or "").strip() or None
+    topic = await _remember_forum_topic(message, explicit_name=explicit_name)
+    if not topic:
+        await message.answer("Сначала добавь этот чат/группу в админке TelOnyx Contest Bot.")
+        return
+
+    await message.answer(f"Раздел сохранён: {topic.name} · ID {topic.message_thread_id}")
+
+
+@router.message()
+async def remember_forum_topic(message: Message) -> None:
+    await _remember_forum_topic(message)
