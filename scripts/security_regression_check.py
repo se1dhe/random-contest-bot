@@ -25,6 +25,7 @@ def main() -> int:
     publish = read("web/api/publish.py")
     billing = read("web/api/billing.py")
     admin = read("web/api/admin.py")
+    bot_billing = read("bot/handlers/billing.py")
     bot_contest = read("bot/handlers/contest.py")
 
     for function_name in (
@@ -47,6 +48,9 @@ def main() -> int:
     require("expected_currency=expected_currency" in billing, "PayKassa webhook must validate payment currency")
     require("async def delete_contest" in admin, "Admin API must expose contest deletion")
     require("require_owned(contest, admin_id" in admin, "Admin contest actions must enforce ownership")
+    require("activate_payment_by_external_id" in bot_billing, "Telegram Stars activation must be idempotent")
+    require("expected_amount=payment.total_amount" in bot_billing, "Telegram Stars activation must validate amount")
+    require("expected_currency=payment.currency" in bot_billing, "Telegram Stars activation must validate currency")
     require("build_public_media_url" in bot_contest, "Bot publication must support public media URL fallback")
 
     print("security regression checks passed")
