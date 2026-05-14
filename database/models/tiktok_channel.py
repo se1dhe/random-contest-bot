@@ -1,7 +1,7 @@
 """
 Модель TikTok аккаунта.
 """
-from sqlalchemy import Column, String, Text
+from sqlalchemy import BigInteger, Column, String, Text
 
 from .base import BaseModel
 
@@ -12,6 +12,7 @@ class TikTokChannel(BaseModel):
     __tablename__ = "tiktok_channels"
 
     channel_id = Column(String(255), nullable=False, unique=True)
+    owner_user_id = Column(BigInteger, nullable=True, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
 

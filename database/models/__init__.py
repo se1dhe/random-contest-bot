@@ -12,6 +12,12 @@ from .tiktok_channel import TikTokChannel
 from .instagram_channel import InstagramChannel
 from .admin_action import AdminAction
 from .forum_topic import ForumTopic
+from .owner_subscription import (
+    OwnerSubscription,
+    OwnerSubscriptionStatus,
+    SubscriptionPayment,
+    SubscriptionPaymentStatus,
+)
 
 __all__ = [
     'Base',
@@ -28,5 +34,9 @@ __all__ = [
     'InstagramChannel',
     'AdminAction',
     'ForumTopic',
+    'OwnerSubscription',
+    'OwnerSubscriptionStatus',
+    'SubscriptionPayment',
+    'SubscriptionPaymentStatus',
     'ContestStatus',
 ]

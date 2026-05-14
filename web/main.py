@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from shared.config import config
-from web.api import contests, admin, publish, youtube_auth, ws, analytics, tiktok_auth, instagram_auth
+from web.api import contests, admin, billing, publish, youtube_auth, ws, analytics, tiktok_auth, instagram_auth
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ if os.path.exists(os.path.join(dist_dir, "assets")):
 # Подключение API роутеров
 app.include_router(contests.router)
 app.include_router(admin.router)
+app.include_router(billing.router)
 app.include_router(publish.router)
 app.include_router(youtube_auth.router)
 app.include_router(tiktok_auth.router)

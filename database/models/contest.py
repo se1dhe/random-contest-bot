@@ -29,6 +29,7 @@ class Contest(BaseModel):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     language = Column(String(8), default="ru", nullable=False)
+    owner_user_id = Column(BigInteger, nullable=True, index=True)
     channel_id = Column(BigInteger, ForeignKey('channels.channel_id'), nullable=False, index=True)
     message_thread_id = Column(Integer, nullable=True)  # ID топика в forum-группе Telegram
     message_id = Column(BigInteger, nullable=True)  # ID сообщения в канале

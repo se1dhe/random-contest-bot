@@ -53,6 +53,23 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 
+def is_super_admin(user_id: int) -> bool:
+    return config.is_admin(user_id)
+
+
+def owner_filter(model, user_id: int):
+    if is_super_admin(user_id):
+        return None
+    return model.owner_user_id == int(user_id)
+
+
+def require_owned(entity, user_id: int, detail: str = "Объект не найден") -> None:
+    if entity is None:
+        raise HTTPException(status_code=404, detail=detail)
+    if not is_super_admin(user_id) and getattr(entity, "owner_user_id", None) != int(user_id):
+        raise HTTPException(status_code=404, detail=detail)
+
+
 class ContestCreate(BaseModel):
     """Модель создания конкурса"""
     title: str
@@ -198,7 +215,11 @@ async def get_channels(
     @param admin_id ID администратора
     @return список каналов
     """
-    result = await db.execute(select(Channel).where(Channel.is_active == True))
+    filters = [Channel.is_active == True]
+    scoped = owner_filter(Channel, admin_id)
+    if scoped is not None:
+        filters.append(scoped)
+    result = await db.execute(select(Channel).where(*filters))
     channels = result.scalars().all()
     
     return [
@@ -226,8 +247,7 @@ async def get_channel_forum_topics(
         select(Channel).where(Channel.channel_id == channel_id, Channel.is_active == True)
     )
     channel = channel_result.scalar_one_or_none()
-    if not channel:
-        raise HTTPException(status_code=404, detail="Канал или группа не найдены")
+    require_owned(channel, admin_id, "Канал или группа не найдены")
 
     topics_result = await db.execute(
         select(ForumTopic)
@@ -389,7 +409,10 @@ async def create_channel(
     existing = result.scalar_one_or_none()
     
     if existing:
+        if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
+            raise HTTPException(status_code=409, detail="Этот канал уже привязан к другому владельцу")
         existing.is_active = True
+        existing.owner_user_id = int(admin_id)
         existing.channel_username = data.channel_username
         existing.channel_title = data.channel_title
         existing.youtube_channel_id = data.youtube_channel_id.strip() if data.youtube_channel_id else None
@@ -437,6 +460,7 @@ async def create_channel(
         channel_id=data.channel_id,
         channel_username=data.channel_username,
         channel_title=data.channel_title,
+        owner_user_id=int(admin_id),
         youtube_channel_id=data.youtube_channel_id.strip() if data.youtube_channel_id else None
     )
     db.add(channel)
@@ -481,9 +505,7 @@ async def update_channel(
         select(Channel).where(Channel.channel_id == channel_id)
     )
     channel = result.scalar_one_or_none()
-    
-    if not channel:
-        raise HTTPException(status_code=404, detail="Канал не найден")
+    require_owned(channel, admin_id, "Канал не найден")
     
     channel.channel_username = data.channel_username
     channel.channel_title = data.channel_title
@@ -573,6 +595,9 @@ async def get_contests(
     )
 
     filters = []
+    scoped = owner_filter(Contest, admin_id)
+    if scoped is not None:
+        filters.append(scoped)
     normalized_status = (status or "").strip().lower()
     if normalized_status:
         if normalized_status == "scheduled":
@@ -819,9 +844,7 @@ async def create_contest(
         select(Channel).where(Channel.channel_id == channel_id)
     )
     channel = channel_result.scalar_one_or_none()
-    
-    if not channel:
-        raise HTTPException(status_code=404, detail="Канал не найден")
+    require_owned(channel, admin_id, "Канал не найден")
     
     # Если требуется подписка на YouTube, берем YouTube канал
     final_youtube_channel_id = None
@@ -877,6 +900,7 @@ async def create_contest(
     # Создаем конкурс
     contest = await service.create_contest(
         title=title,
+        owner_user_id=int(admin_id),
         language=contest_language,
         channel_id=channel_id,
         message_thread_id=final_message_thread_id,
@@ -956,8 +980,7 @@ async def duplicate_contest(
     """
     service = ContestService(db)
     source = await service.get_contest_by_id(contest_id)
-    if not source:
-        raise HTTPException(status_code=404, detail="Исходный конкурс не найден")
+    require_owned(source, admin_id, "Исходный конкурс не найден")
 
     duplicate_title = (data.title or f"{source.title} (копия)").strip()
     if not duplicate_title:
@@ -977,6 +1000,7 @@ async def duplicate_contest(
 
     new_contest = await service.create_contest(
         title=duplicate_title,
+        owner_user_id=int(admin_id),
         language=normalize_language(source.language),
         channel_id=source.channel_id,
         message_thread_id=source.message_thread_id,
@@ -1073,8 +1097,7 @@ async def draw_winners(
         contest_service = ContestService(db)
         contest = await contest_service.get_contest_by_id(contest_id)
         
-        if not contest:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        require_owned(contest, admin_id, "Конкурс не найден")
         
         if contest.status != ContestStatus.ACTIVE:
             raise HTTPException(
@@ -1190,8 +1213,7 @@ async def repair_contest(
         draw_service = DrawService(db)
         contest = await contest_service.get_contest_by_id(contest_id)
 
-        if not contest:
-            raise HTTPException(status_code=404, detail="Конкурс не найден")
+        require_owned(contest, admin_id, "Конкурс не найден")
 
         actions: list[str] = []
         webapp_url = config.webapp_url.rstrip("/")
@@ -1280,8 +1302,7 @@ async def delete_contest(
     """
     contest_service = ContestService(db)
     contest = await contest_service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
 
     await audit_admin(
         db,
@@ -1316,8 +1337,7 @@ async def get_contest_stats(
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
     
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
     
     participants_count = len(contest.participants) if contest.participants else 0
     
@@ -1342,8 +1362,7 @@ async def get_contest_preview(
     """
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
 
     from aiogram import Bot
     bot = Bot(token=config.bot_token)
@@ -1380,8 +1399,7 @@ async def get_republish_diff(
     """
     contest_service = ContestService(db)
     contest = await contest_service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
 
     from aiogram import Bot
     bot = Bot(token=config.bot_token)
@@ -1434,8 +1452,7 @@ async def get_results_preview(
     """
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
 
     from aiogram import Bot
     bot = Bot(token=config.bot_token)
@@ -1522,8 +1539,7 @@ async def export_contest_participants(
     """
     contest_service = ContestService(db)
     contest = await contest_service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
 
     participants = sorted(contest.participants, key=lambda participant: participant.registration_number)
     buffer = StringIO()
@@ -1577,8 +1593,7 @@ async def schedule_contest_publication(
     """
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
     if contest.status != ContestStatus.DRAFT:
         raise HTTPException(status_code=400, detail="Отложенная публикация доступна только для черновиков")
 
@@ -1628,8 +1643,7 @@ async def cancel_scheduled_contest_publication(
     """
     service = ContestService(db)
     contest = await service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
     if contest.status != ContestStatus.DRAFT:
         raise HTTPException(status_code=400, detail="Отменить публикацию можно только у черновика")
     if not contest.publish_at:
@@ -1777,8 +1791,7 @@ async def republish_contest(
     """
     contest_service = ContestService(db)
     contest = await contest_service.get_contest_by_id(contest_id)
-    if not contest:
-        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    require_owned(contest, admin_id, "Конкурс не найден")
     if contest.status != ContestStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="Перепубликация доступна только для активных конкурсов")
 
@@ -1827,7 +1840,11 @@ async def get_youtube_channels(
     """
     Получить список YouTube каналов
     """
-    result = await db.execute(select(YoutubeChannel))
+    query = select(YoutubeChannel)
+    scoped = owner_filter(YoutubeChannel, admin_id)
+    if scoped is not None:
+        query = query.where(scoped)
+    result = await db.execute(query)
     channels = result.scalars().all()
     
     return [
@@ -1856,6 +1873,8 @@ async def add_youtube_channel(
     existing = result.scalar_one_or_none()
     
     if existing:
+        if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
+            raise HTTPException(status_code=409, detail="Этот YouTube канал уже привязан к другому владельцу")
         raise HTTPException(status_code=400, detail="Такой канал уже добавлен")
     
     # Получаем информацию о канале через API
@@ -1877,6 +1896,7 @@ async def add_youtube_channel(
 
     channel = YoutubeChannel(
         channel_id=data.channel_id,
+        owner_user_id=int(admin_id),
         title=title,
         description=description
     )
@@ -1914,8 +1934,7 @@ async def delete_youtube_channel(
     )
     channel = result.scalar_one_or_none()
     
-    if not channel:
-        raise HTTPException(status_code=404, detail="Канал не найден")
+    require_owned(channel, admin_id, "Канал не найден")
     
     await db.delete(channel)
     await db.commit()
@@ -1940,7 +1959,11 @@ async def get_tiktok_channels(
     """
     Получить список TikTok аккаунтов
     """
-    result = await db.execute(select(TikTokChannel))
+    query = select(TikTokChannel)
+    scoped = owner_filter(TikTokChannel, admin_id)
+    if scoped is not None:
+        query = query.where(scoped)
+    result = await db.execute(query)
     channels = result.scalars().all()
 
     return [
@@ -1986,6 +2009,8 @@ async def add_tiktok_channel(
     )
     existing = result.scalar_one_or_none()
     if existing:
+        if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
+            raise HTTPException(status_code=409, detail="Этот TikTok аккаунт уже привязан к другому владельцу")
         raise HTTPException(status_code=400, detail="Такой TikTok аккаунт уже добавлен")
 
     title = (data.title or f"@{channel_id}").strip()
@@ -1994,6 +2019,7 @@ async def add_tiktok_channel(
 
     channel = TikTokChannel(
         channel_id=channel_id,
+        owner_user_id=int(admin_id),
         title=title,
         description=data.description
     )
@@ -2031,8 +2057,7 @@ async def delete_tiktok_channel(
     )
     channel = result.scalar_one_or_none()
 
-    if not channel:
-        raise HTTPException(status_code=404, detail="TikTok аккаунт не найден")
+    require_owned(channel, admin_id, "TikTok аккаунт не найден")
 
     await db.delete(channel)
     await db.commit()
@@ -2057,7 +2082,11 @@ async def get_instagram_channels(
     """
     Получить список Instagram каналов
     """
-    result = await db.execute(select(InstagramChannel))
+    query = select(InstagramChannel)
+    scoped = owner_filter(InstagramChannel, admin_id)
+    if scoped is not None:
+        query = query.where(scoped)
+    result = await db.execute(query)
     channels = result.scalars().all()
 
     return [
@@ -2090,6 +2119,8 @@ async def add_instagram_channel(
     )
     existing = result.scalar_one_or_none()
     if existing:
+        if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
+            raise HTTPException(status_code=409, detail="Этот Instagram канал уже привязан к другому владельцу")
         raise HTTPException(status_code=400, detail="Такой Instagram канал уже добавлен")
 
     title = (data.title or channel_id).strip()
@@ -2098,6 +2129,7 @@ async def add_instagram_channel(
 
     channel = InstagramChannel(
         channel_id=channel_id,
+        owner_user_id=int(admin_id),
         title=title,
         description=data.description
     )
@@ -2135,8 +2167,7 @@ async def delete_instagram_channel(
     )
     channel = result.scalar_one_or_none()
 
-    if not channel:
-        raise HTTPException(status_code=404, detail="Instagram канал не найден")
+    require_owned(channel, admin_id, "Instagram канал не найден")
 
     await db.delete(channel)
     await db.commit()

@@ -27,6 +27,7 @@ class ContestService:
         channel_id: int,
         end_date: datetime,
         prize_count: int,
+        owner_user_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
         language: str = "ru",
         draw_method: ContestDrawMethod = ContestDrawMethod.RANDOM,
@@ -57,6 +58,7 @@ class ContestService:
         """
         contest = Contest(
             title=title,
+            owner_user_id=owner_user_id,
             language=language,
             channel_id=channel_id,
             message_thread_id=message_thread_id,
