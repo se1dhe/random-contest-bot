@@ -17,8 +17,8 @@ from database.models.contest import ContestStatus, ContestDrawMethod
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from shared.config import config
+from shared.services.upload_storage import build_upload_image_path, build_upload_path, ensure_upload_dir
 from pydantic import BaseModel
-import os
 import shutil
 import uuid
 from pathlib import Path
@@ -49,8 +49,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
 
 # Настройка папки для загрузки файлов
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+ensure_upload_dir()
 
 
 def is_super_admin(user_id: int) -> bool:
@@ -764,13 +763,13 @@ async def create_contest(
         # Генерируем уникальное имя файла
         file_id = str(uuid.uuid4())
         filename = f"{file_id}{file_ext}"
-        file_path = UPLOAD_DIR / filename
+        file_path = build_upload_path(filename)
         
         # Сохраняем файл
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
         
-        image_path = f"uploads/{filename}"
+        image_path = build_upload_image_path(filename)
     
     # Парсим JSON строки
     try:

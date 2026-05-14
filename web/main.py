@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from shared.config import config
+from shared.services.upload_storage import ensure_upload_dir
 from web.api import contests, admin, billing, publish, youtube_auth, ws, analytics, tiktok_auth, instagram_auth
 
 logging.basicConfig(level=logging.INFO)
@@ -17,11 +18,10 @@ app = FastAPI(title="Contest Bot WebApp")
 
 # Директории
 static_dir = os.path.join(os.path.dirname(__file__), "static")
-uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+uploads_dir = ensure_upload_dir()
 dist_dir = os.path.join(static_dir, "dist")
 
 # Монтируем загрузки
-os.makedirs(uploads_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # Монтируем ассеты билда

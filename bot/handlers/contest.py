@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from aiogram import Router, Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.db import AsyncSessionLocal
 from bot.services.contest_service import ContestService
 from shared.services.telegram_service import TelegramService
+from shared.services.upload_storage import build_public_media_url, resolve_upload_image_path
 from shared.config import config
 from shared.i18n import day_unit, normalize_language, translate
 
@@ -160,17 +160,9 @@ def format_results_message(contest, bot_username: str) -> tuple[str, InlineKeybo
     return text, keyboard
 
 
-def _resolve_image_path(image_path: str | None) -> Path | None:
-    if not image_path:
-        return None
-    if image_path.startswith('/'):
-        return Path(image_path)
-    return Path('/app') / image_path
-
-
 async def _send_contest_post(bot: Bot, contest, text: str, keyboard: InlineKeyboardMarkup, chat_id: int):
     message_thread_id = contest.message_thread_id if chat_id == contest.channel_id else None
-    image_path = _resolve_image_path(contest.image_path)
+    image_path = resolve_upload_image_path(contest.image_path)
     if image_path and image_path.exists():
         photo_file = FSInputFile(str(image_path))
         return await bot.send_photo(
@@ -184,6 +176,20 @@ async def _send_contest_post(bot: Bot, contest, text: str, keyboard: InlineKeybo
 
     if image_path and not image_path.exists():
         logger.warning(f"Файл изображения не найден: {image_path}")
+
+    public_image_url = build_public_media_url(contest.image_path)
+    if public_image_url:
+        try:
+            return await bot.send_photo(
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                photo=public_image_url,
+                caption=text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        except Exception as exc:
+            logger.warning("Не удалось отправить изображение по URL %s: %s", public_image_url, exc)
 
     return await bot.send_message(
         chat_id=chat_id,

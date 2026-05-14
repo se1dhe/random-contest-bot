@@ -31,8 +31,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY --from=frontend-builder /app/web/static/dist ./web/static/dist
 
-# Создание директорий для статики
-RUN mkdir -p web/static/css web/static/js web/templates web/static/dist
+# Создание директорий для статики и загружаемых файлов
+RUN mkdir -p web/static/css web/static/js web/templates web/static/dist /app/uploads
 
 # Переменные окружения
 ENV PYTHONUNBUFFERED=1
