@@ -7,10 +7,27 @@ from database.db import AsyncSessionLocal
 from bot.services.contest_service import ContestService
 from bot.services.draw_service import DrawService
 from shared.services.redis_service import get_redis, acquire_lock, release_lock
+from shared.services.subscription_service import get_subscription_status
 from aiogram import Bot
 from shared.config import config
 
 logger = logging.getLogger(__name__)
+
+
+async def can_activate_scheduled_contest(db, contest) -> bool:
+    owner_id = getattr(contest, "owner_user_id", None)
+    if not owner_id or config.is_admin(owner_id):
+        return True
+    status = await get_subscription_status(db, int(owner_id))
+    if not status["active"]:
+        logger.warning("Отложенная публикация конкурса %s пропущена: подписка владельца неактивна", contest.id)
+        return False
+    active_count = int(status["usage"].get("active_contests", 0))
+    active_limit = int(status["plan"]["limits"]["max_active_contests"])
+    if active_count + 1 > active_limit:
+        logger.warning("Отложенная публикация конкурса %s пропущена: достигнут лимит активных конкурсов", contest.id)
+        return False
+    return True
 
 
 async def handle_contest_expired(contest_id: int, bot: Bot):
@@ -100,6 +117,8 @@ async def handle_contest_publish(contest_id: int, bot: Bot):
                 return
             if contest.status not in (ContestStatus.DRAFT, ContestStatus.ACTIVE):
                 logger.info("Конкурс %s имеет статус %s, отложенная публикация пропущена", contest_id, contest.status)
+                return
+            if contest.status == ContestStatus.DRAFT and not await can_activate_scheduled_contest(db, contest):
                 return
             if contest.status == ContestStatus.ACTIVE and not contest.message_id:
                 logger.warning(

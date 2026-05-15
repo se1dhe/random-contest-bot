@@ -19,7 +19,6 @@ from sqlalchemy.orm import selectinload
 from shared.config import config
 from shared.services.upload_storage import build_upload_image_path, build_upload_path, ensure_upload_dir
 from pydantic import BaseModel
-import shutil
 import uuid
 from pathlib import Path
 from io import StringIO
@@ -35,6 +34,7 @@ from shared.services.redis_service import (
     acquire_lock,
     release_lock,
 )
+from shared.services.subscription_service import get_subscription_status
 from web.api.deps import verify_admin
 from bot.handlers.contest import (
     publish_contest_to_channel,
@@ -67,6 +67,47 @@ def require_owned(entity, user_id: int, detail: str = "Объект не най�
         raise HTTPException(status_code=404, detail=detail)
     if not is_super_admin(user_id) and getattr(entity, "owner_user_id", None) != int(user_id):
         raise HTTPException(status_code=404, detail=detail)
+
+
+async def get_owner_subscription_context(db: AsyncSession, user_id: int) -> dict:
+    if is_super_admin(user_id):
+        return {
+            "active": True,
+            "is_super_admin": True,
+            "usage": {},
+            "plan": {
+                "limits": {
+                    "max_channels": 10**9,
+                    "max_active_contests": 10**9,
+                    "max_draft_contests": 10**9,
+                    "max_external_channels_per_platform": 10**9,
+                    "max_sponsors_per_contest": 10**9,
+                    "max_prizes_per_contest": 10**9,
+                    "max_image_mb": 100,
+                }
+            },
+        }
+    status = await get_subscription_status(db, user_id)
+    if not status["active"]:
+        raise HTTPException(status_code=402, detail="Для управления конкурсами нужна активная подписка")
+    status["is_super_admin"] = False
+    return status
+
+
+async def enforce_owner_limit(
+    db: AsyncSession,
+    user_id: int,
+    usage_key: str,
+    limit_key: str,
+    detail: str,
+    increment: int = 1,
+) -> dict:
+    context = await get_owner_subscription_context(db, user_id)
+    current = int(context.get("usage", {}).get(usage_key, 0))
+    limit = int(context["plan"]["limits"][limit_key])
+    if current + increment > limit:
+        raise HTTPException(status_code=402, detail=detail)
+    return context
 
 
 class ContestCreate(BaseModel):
@@ -410,6 +451,14 @@ async def create_channel(
     if existing:
         if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
             raise HTTPException(status_code=409, detail="Этот канал уже привязан к другому владельцу")
+        if not existing.is_active:
+            await enforce_owner_limit(
+                db,
+                admin_id,
+                usage_key="channels",
+                limit_key="max_channels",
+                detail="Достигнут лимит активных Telegram каналов по подписке",
+            )
         existing.is_active = True
         existing.owner_user_id = int(admin_id)
         existing.channel_username = data.channel_username
@@ -434,6 +483,14 @@ async def create_channel(
             "youtube_channel_id": existing.youtube_channel_id
         }
     
+    await enforce_owner_limit(
+        db,
+        admin_id,
+        usage_key="channels",
+        limit_key="max_channels",
+        detail="Достигнут лимит активных Telegram каналов по подписке",
+    )
+
     # Проверка прав бота в канале
     from aiogram import Bot
     from shared.services.telegram_service import TelegramService
@@ -750,33 +807,32 @@ async def create_contest(
     
     service = ContestService(db)
     contest_language = normalize_language(language)
-    
-    # Сохраняем изображение, если загружено
-    image_path = None
-    if image and image.filename:
-        # Проверяем расширение файла
-        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
-        file_ext = Path(image.filename).suffix.lower()
-        if file_ext not in allowed_extensions:
-            raise HTTPException(status_code=400, detail="Недопустимый формат изображения. Разрешены: JPG, PNG, GIF, WEBP")
-        
-        # Генерируем уникальное имя файла
-        file_id = str(uuid.uuid4())
-        filename = f"{file_id}{file_ext}"
-        file_path = build_upload_path(filename)
-        
-        # Сохраняем файл
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
-        
-        image_path = build_upload_image_path(filename)
-    
+
     # Парсим JSON строки
     try:
         prizes_data = json.loads(prizes)
         sponsors_data = json.loads(sponsors) if sponsors else None
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=400, detail=f"Ошибка парсинга JSON: {str(e)}")
+
+    subscription_context = await enforce_owner_limit(
+        db,
+        admin_id,
+        usage_key="draft_contests",
+        limit_key="max_draft_contests",
+        detail="Достигнут лимит черновиков конкурсов по подписке",
+    )
+    limits = subscription_context["plan"]["limits"]
+    if len(prizes_data or []) > int(limits["max_prizes_per_contest"]):
+        raise HTTPException(
+            status_code=402,
+            detail=f"В подписке доступно не более {limits['max_prizes_per_contest']} призов на конкурс",
+        )
+    if len(sponsors_data or []) > int(limits["max_sponsors_per_contest"]):
+        raise HTTPException(
+            status_code=402,
+            detail=f"В подписке доступно не более {limits['max_sponsors_per_contest']} спонсоров на конкурс",
+        )
 
     if sponsors_data:
         sponsor_ids = [int(sponsor["channel_id"]) for sponsor in sponsors_data]
@@ -791,6 +847,38 @@ async def create_contest(
                 status_code=400,
                 detail="Основной канал конкурса нельзя одновременно указывать как канал-спонсор"
             )
+
+    # Сохраняем изображение, если загружено
+    image_path = None
+    if image and image.filename:
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+        file_ext = Path(image.filename).suffix.lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Недопустимый формат изображения. Разрешены: JPG, PNG, GIF, WEBP")
+
+        file_id = str(uuid.uuid4())
+        filename = f"{file_id}{file_ext}"
+        file_path = build_upload_path(filename)
+        max_bytes = int(limits["max_image_mb"]) * 1024 * 1024
+        written = 0
+        with open(file_path, "wb") as buffer:
+            while True:
+                chunk = image.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    try:
+                        Path(file_path).unlink(missing_ok=True)
+                    except Exception:
+                        logger.warning("Не удалось удалить превышающий лимит файл %s", file_path)
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Размер изображения превышает лимит подписки {limits['max_image_mb']} МБ",
+                    )
+                buffer.write(chunk)
+
+        image_path = build_upload_image_path(filename)
     
     # Обрабатываем дату: используем dateutil.parser для надежного парсинга
     try:
@@ -978,6 +1066,13 @@ async def duplicate_contest(
     service = ContestService(db)
     source = await service.get_contest_by_id(contest_id)
     require_owned(source, admin_id, "Исходный конкурс не найден")
+    await enforce_owner_limit(
+        db,
+        admin_id,
+        usage_key="draft_contests",
+        limit_key="max_draft_contests",
+        detail="Достигнут лимит черновиков конкурсов по подписке",
+    )
 
     duplicate_title = (data.title or f"{source.title} (копия)").strip()
     if not duplicate_title:
@@ -1254,6 +1349,13 @@ async def repair_contest(
             if now_db and getattr(now_db, "tzinfo", None) is not None:
                 now_db = now_db.replace(tzinfo=None)
             if contest.publish_at <= now_db:
+                await enforce_owner_limit(
+                    db,
+                    admin_id,
+                    usage_key="active_contests",
+                    limit_key="max_active_contests",
+                    detail="Достигнут лимит активных конкурсов по подписке",
+                )
                 published = await publish_contest_to_channel(contest_id, bot, webapp_url)
                 if published:
                     actions.append("overdue_publish_recovered")
@@ -1688,6 +1790,9 @@ async def bulk_publish_now(
     contest_service = ContestService(db)
     published_ids: list[int] = []
     skipped: list[dict] = []
+    active_limit_context = await get_owner_subscription_context(db, admin_id)
+    active_limit = int(active_limit_context["plan"]["limits"]["max_active_contests"])
+    active_count = int(active_limit_context.get("usage", {}).get("active_contests", 0))
     try:
         for contest_id in contest_ids:
             contest = await contest_service.get_contest_by_id(contest_id)
@@ -1705,6 +1810,10 @@ async def bulk_publish_now(
             if contest.status not in (ContestStatus.DRAFT, ContestStatus.ACTIVE):
                 skipped.append({"contest_id": contest_id, "reason": f"invalid_status:{contest.status.value}"})
                 continue
+            was_draft = contest.status == ContestStatus.DRAFT
+            if was_draft and active_count + 1 > active_limit:
+                skipped.append({"contest_id": contest_id, "reason": "active_limit_reached"})
+                continue
             if contest.status == ContestStatus.ACTIVE and not contest.message_id:
                 logger.warning(
                     "bulk_publish_now: конкурс %s имеет статус active без message_id, выполняем восстановительную публикацию",
@@ -1714,6 +1823,8 @@ async def bulk_publish_now(
             success = await publish_contest_to_channel(contest_id, bot, config.webapp_url)
             if success:
                 published_ids.append(contest_id)
+                if was_draft:
+                    active_count += 1
                 await cancel_contest_publish(contest_id)
                 await audit_admin(
                     db,
@@ -1892,6 +2003,14 @@ async def add_youtube_channel(
         if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
             raise HTTPException(status_code=409, detail="Этот YouTube канал уже привязан к другому владельцу")
         raise HTTPException(status_code=400, detail="Такой канал уже добавлен")
+
+    await enforce_owner_limit(
+        db,
+        admin_id,
+        usage_key="youtube_channels",
+        limit_key="max_external_channels_per_platform",
+        detail="Достигнут лимит YouTube каналов по подписке",
+    )
     
     # Получаем информацию о канале через API
     youtube_service = YouTubeService()
@@ -2029,6 +2148,14 @@ async def add_tiktok_channel(
             raise HTTPException(status_code=409, detail="Этот TikTok аккаунт уже привязан к другому владельцу")
         raise HTTPException(status_code=400, detail="Такой TikTok аккаунт уже добавлен")
 
+    await enforce_owner_limit(
+        db,
+        admin_id,
+        usage_key="tiktok_channels",
+        limit_key="max_external_channels_per_platform",
+        detail="Достигнут лимит TikTok аккаунтов по подписке",
+    )
+
     title = (data.title or f"@{channel_id}").strip()
     if not title:
         raise HTTPException(status_code=400, detail="Название TikTok аккаунта не может быть пустым")
@@ -2138,6 +2265,14 @@ async def add_instagram_channel(
         if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
             raise HTTPException(status_code=409, detail="Этот Instagram канал уже привязан к другому владельцу")
         raise HTTPException(status_code=400, detail="Такой Instagram канал уже добавлен")
+
+    await enforce_owner_limit(
+        db,
+        admin_id,
+        usage_key="instagram_channels",
+        limit_key="max_external_channels_per_platform",
+        detail="Достигнут лимит Instagram каналов по подписке",
+    )
 
     title = (data.title or channel_id).strip()
     if not title:

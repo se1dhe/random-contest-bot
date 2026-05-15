@@ -185,6 +185,36 @@ export const AdminPage: React.FC = () => {
             actionability: 'auto_repairable' | 'manual_attention';
         }>;
     }
+    interface SubscriptionStatus {
+        active: boolean;
+        subscription?: {
+            ends_at?: string | null;
+            provider?: string;
+            plan_code?: string;
+        } | null;
+        plan: {
+            title: string;
+            telegram_stars: number;
+            fiat_cents: number;
+            limits: {
+                max_channels: number;
+                max_active_contests: number;
+                max_draft_contests: number;
+                max_external_channels_per_platform: number;
+                max_sponsors_per_contest: number;
+                max_prizes_per_contest: number;
+                max_image_mb: number;
+            };
+        };
+        usage: {
+            channels: number;
+            active_contests: number;
+            draft_contests: number;
+            youtube_channels: number;
+            tiktok_channels: number;
+            instagram_channels: number;
+        };
+    }
     interface PaginatedContestsResponse {
         items: AdminContest[];
         total: number;
@@ -410,6 +440,7 @@ export const AdminPage: React.FC = () => {
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics_growth', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['billing_status', initData] });
     };
 
     const { data: contests, isLoading: isContestsLoading, refetch: refetchContests } = useQuery<AdminContest[]>({
@@ -566,6 +597,18 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData && activeTab === 'dash'
     });
 
+    const { data: subscriptionStatus, refetch: refetchSubscriptionStatus } = useQuery<SubscriptionStatus>({
+        queryKey: ['billing_status', initData],
+        queryFn: async () => {
+            const res = await axios.get('/api/billing/status', {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!initData,
+    });
+
     const { data: recentActions } = useQuery<AdminHistoryItem[]>({
         queryKey: ['admin_recent_actions', initData],
         queryFn: async () => {
@@ -644,6 +687,7 @@ export const AdminPage: React.FC = () => {
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics_growth', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['billing_status', initData] });
 
         const contestsResult = await queryClient.fetchQuery<AdminContest[]>({
             queryKey: ['admin_contests', initData],
@@ -676,6 +720,7 @@ export const AdminPage: React.FC = () => {
         refetchAnalytics();
         refetchGrowth();
         refetchHealth();
+        refetchSubscriptionStatus();
         queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
         setIsSettingsOpen(false);
         hapticFeedback('heavy');
@@ -1808,6 +1853,51 @@ export const AdminPage: React.FC = () => {
                                     exit={{ opacity: 0, y: -10 }}
                                     className="space-y-4"
                                 >
+                                    {subscriptionStatus && (
+                                        <GlassCard className="p-4 border-white/5 space-y-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Подписка</h3>
+                                                    <div className="mt-1 text-sm font-black text-white/90">{subscriptionStatus.plan.title}</div>
+                                                    <div className="text-[11px] text-white/40">
+                                                        {subscriptionStatus.subscription?.ends_at
+                                                            ? `Активна до ${new Date(subscriptionStatus.subscription.ends_at).toLocaleDateString()}`
+                                                            : 'Активная подписка не найдена'}
+                                                    </div>
+                                                </div>
+                                                <div className={cn(
+                                                    'rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider',
+                                                    subscriptionStatus.active
+                                                        ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                                        : 'bg-red-500/10 text-red-300 border border-red-500/20'
+                                                )}>
+                                                    {subscriptionStatus.active ? 'Active' : 'Paused'}
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                {[
+                                                    ['Каналы', subscriptionStatus.usage.channels, subscriptionStatus.plan.limits.max_channels],
+                                                    ['Активные', subscriptionStatus.usage.active_contests, subscriptionStatus.plan.limits.max_active_contests],
+                                                    ['Черновики', subscriptionStatus.usage.draft_contests, subscriptionStatus.plan.limits.max_draft_contests],
+                                                    [
+                                                        'Соцсети',
+                                                        Math.max(
+                                                            subscriptionStatus.usage.youtube_channels,
+                                                            subscriptionStatus.usage.tiktok_channels,
+                                                            subscriptionStatus.usage.instagram_channels
+                                                        ),
+                                                        subscriptionStatus.plan.limits.max_external_channels_per_platform
+                                                    ],
+                                                ].map(([label, used, limit]) => (
+                                                    <div key={String(label)} className="rounded-2xl bg-white/[0.03] border border-white/5 p-3">
+                                                        <div className="text-[10px] uppercase tracking-wider text-white/35">{label}</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{used}<span className="text-xs text-white/35">/{limit}</span></div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </GlassCard>
+                                    )}
+
                                     <GlassCard className="p-4 border-white/5 space-y-4">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">

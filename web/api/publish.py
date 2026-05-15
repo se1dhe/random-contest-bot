@@ -12,6 +12,7 @@ from shared.config import config
 import os
 from shared.services.admin_audit_service import log_admin_action
 from shared.services.redis_service import cancel_contest_publish, acquire_lock, release_lock
+from shared.services.subscription_service import get_subscription_status
 from web.api.deps import verify_admin
 import logging
 
@@ -24,6 +25,16 @@ def require_owned_contest(contest, user_id: int) -> None:
         raise HTTPException(status_code=404, detail="Конкурс не найден")
     if not config.is_admin(user_id) and getattr(contest, "owner_user_id", None) != int(user_id):
         raise HTTPException(status_code=404, detail="Конкурс не найден")
+
+
+async def enforce_active_contest_limit(db: AsyncSession, user_id: int) -> None:
+    if config.is_admin(user_id):
+        return
+    status = await get_subscription_status(db, user_id)
+    active_count = int(status["usage"].get("active_contests", 0))
+    limit = int(status["plan"]["limits"]["max_active_contests"])
+    if active_count + 1 > limit:
+        raise HTTPException(status_code=402, detail="Достигнут лимит активных конкурсов по подписке")
 
 
 @router.post("/contest/{contest_id}")
@@ -58,6 +69,8 @@ async def publish_contest(
     if contest.status not in (ContestStatus.DRAFT, ContestStatus.ACTIVE):
         await release_lock(lock_key)
         raise HTTPException(status_code=400, detail="Публикация доступна только для черновика")
+    if contest.status == ContestStatus.DRAFT:
+        await enforce_active_contest_limit(db, user_id)
     if contest.status == ContestStatus.ACTIVE and not contest.message_id:
         logger.warning(
             "Конкурс %s имеет статус active без message_id, запускаем восстановительную публикацию",

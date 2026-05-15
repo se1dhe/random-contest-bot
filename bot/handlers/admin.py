@@ -194,6 +194,7 @@ async def cmd_help(message: Message):
             "📋 <b>Команды владельца:</b>\n\n"
             "/start - Начать работу с ботом\n"
             "/admin - Открыть панель владельца\n"
+            "/subscription - Статус подписки и лимиты\n"
             "/subscribe - Купить подписку Telegram Stars\n"
             "/paykassa - Купить подписку через PayKassa\n"
             "/help - Показать это сообщение\n\n"

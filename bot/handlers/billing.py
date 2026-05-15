@@ -16,6 +16,7 @@ from shared.services.subscription_service import (
     activate_payment_by_external_id,
     create_subscription_payment,
     get_subscription_plan,
+    get_subscription_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,36 @@ async def cmd_paykassa(message: Message):
         "💳 Оплата подписки через PayKassa:\n"
         f"{checkout_url}\n\n"
         "После подтверждения платежа доступ к панели владельца активируется автоматически."
+    )
+
+
+@router.message(Command("subscription"))
+async def cmd_subscription(message: Message):
+    if not is_private_chat(message):
+        return
+
+    async with AsyncSessionLocal() as db:
+        status = await get_subscription_status(db, message.from_user.id)
+
+    if not status["active"]:
+        await message.answer(
+            "Подписка не активна.\n\n"
+            "Оформи доступ через Telegram Stars: /subscribe\n"
+            "PayKassa будет доступна после настройки мерчанта: /paykassa"
+        )
+        return
+
+    limits = status["plan"]["limits"]
+    usage = status["usage"]
+    ends_at = status["subscription"]["ends_at"] if status.get("subscription") else None
+    await message.answer(
+        "✅ <b>Подписка активна</b>\n\n"
+        f"План: {status['plan']['title']}\n"
+        f"Действует до: {ends_at or 'без ограничения'}\n\n"
+        f"Telegram каналы: {usage['channels']}/{limits['max_channels']}\n"
+        f"Активные конкурсы: {usage['active_contests']}/{limits['max_active_contests']}\n"
+        f"Черновики: {usage['draft_contests']}/{limits['max_draft_contests']}\n"
+        f"YouTube/TikTok/Instagram: до {limits['max_external_channels_per_platform']} на платформу"
     )
 
 

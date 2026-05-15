@@ -6,17 +6,20 @@ import hmac
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db import get_db
+from shared.config import config
 from shared.services.subscription_service import (
     activate_payment_by_external_id,
     build_paykassa_checkout_url,
     create_subscription_payment,
     get_subscription_plan,
+    get_subscription_status,
 )
-from web.services.telegram_auth import verify_telegram_webapp_initdata
+from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -41,6 +44,8 @@ def verify_paykassa_signature(request: Request, payload: dict) -> None:
     """
     secret = os.getenv("PAYKASSA_WEBHOOK_SECRET", "").strip()
     if not secret:
+        if os.getenv("PAYKASSA_REQUIRE_WEBHOOK_SECRET", "true").lower() in {"1", "true", "yes"}:
+            raise HTTPException(status_code=503, detail="PAYKASSA_WEBHOOK_SECRET не настроен")
         return
 
     received = (
@@ -63,19 +68,6 @@ def verify_paykassa_signature(request: Request, payload: dict) -> None:
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
 
-def resolve_user_id(user_id: Optional[int], init_data: Optional[str]) -> int:
-    if init_data:
-        auth_data = verify_telegram_webapp_initdata(init_data)
-        if not auth_data:
-            raise HTTPException(status_code=403, detail="Невалидные данные авторизации")
-        telegram_id = auth_data.get("user", {}).get("id")
-        if telegram_id:
-            return int(telegram_id)
-    if user_id:
-        return int(user_id)
-    raise HTTPException(status_code=403, detail="Telegram user не найден")
-
-
 @router.get("/plans")
 async def plans():
     plan = get_subscription_plan()
@@ -87,17 +79,28 @@ async def plans():
             "duration_days": plan["duration_days"],
             "telegram_stars": plan["stars"],
             "fiat_cents": plan["fiat_cents"],
+            "limits": plan["limits"],
         }
     ]
 
 
-@router.post("/paykassa/create")
-async def create_paykassa_checkout(
-    user_id: Optional[int] = Query(None),
-    _auth: Optional[str] = Query(None, alias="_auth"),
+@router.get("/status")
+async def subscription_status(
+    telegram_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
 ):
-    telegram_user_id = resolve_user_id(user_id, _auth)
+    status = await get_subscription_status(db, telegram_user_id)
+    status["is_super_admin"] = config.is_admin(telegram_user_id)
+    if status["is_super_admin"]:
+        status["active"] = True
+    return status
+
+
+@router.post("/paykassa/create")
+async def create_paykassa_checkout(
+    telegram_user_id: int = Depends(verify_telegram_user),
+    db: AsyncSession = Depends(get_db),
+):
     payment = await create_subscription_payment(
         db,
         user_id=telegram_user_id,
@@ -144,4 +147,4 @@ async def paykassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
     )
     if not subscription:
         raise HTTPException(status_code=404, detail="Payment not found")
-    return {"ok": True}
+    return PlainTextResponse(f"{external_charge_id}|success")
