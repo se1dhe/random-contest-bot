@@ -1,8 +1,11 @@
 """
 Сбор известных Telegram forum topics.
 """
+from __future__ import annotations
+
 import logging
 
+from aiogram import BaseMiddleware
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
@@ -112,3 +115,15 @@ async def register_current_topic(message: Message, command: CommandObject) -> No
 @router.message()
 async def remember_forum_topic(message: Message) -> None:
     await _remember_forum_topic(message)
+
+
+class ForumTopicRecorderMiddleware(BaseMiddleware):
+    """Record forum topics before command handlers consume the update."""
+
+    async def __call__(self, handler, event, data):
+        if isinstance(event, Message):
+            try:
+                await _remember_forum_topic(event)
+            except Exception:
+                logger.exception("Ошибка автоопределения Telegram topic")
+        return await handler(event, data)

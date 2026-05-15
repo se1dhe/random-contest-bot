@@ -32,6 +32,9 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher()
+
+    # Автоопределение forum topics должно срабатывать до command handlers.
+    dp.message.outer_middleware(forum_topics.ForumTopicRecorderMiddleware())
     
     # Регистрация роутеров
     dp.include_router(billing.router)
