@@ -442,7 +442,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                         )}
                                         {forumTopics && forumTopics.length === 0 && (
                                             <div className="text-[10px] text-white/35">
-                                                Бот еще не видел топики этой группы. Отправьте /topic Название прямо в нужном разделе или используйте ручной ID.
+                                                Бот еще не видел разделы этой группы. Разделы появятся автоматически после входящих Telegram events, либо используйте ручной ID.
                                             </div>
                                         )}
                                     </GlassCard>

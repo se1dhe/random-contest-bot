@@ -7,7 +7,6 @@ import logging
 
 from aiogram import BaseMiddleware
 from aiogram import Router
-from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from sqlalchemy import select
 
@@ -91,25 +90,6 @@ async def _remember_forum_topic(message: Message, explicit_name: str | None = No
         await db.commit()
         logger.info("Запомнен топик Telegram: chat_id=%s thread_id=%s name=%s", chat.id, thread_id, name)
         return topic
-
-
-@router.message(Command("topic"))
-async def register_current_topic(message: Message, command: CommandObject) -> None:
-    """
-    Явно привязать текущий forum topic к админке.
-    Нужно для старых топиков, которые были созданы до добавления бота.
-    """
-    if not getattr(message, "message_thread_id", None):
-        await message.answer("Команду /topic нужно отправить внутри нужного раздела forum-группы.")
-        return
-
-    explicit_name = (command.args or "").strip() or None
-    topic = await _remember_forum_topic(message, explicit_name=explicit_name)
-    if not topic:
-        await message.answer("Сначала добавь этот чат/группу в админке TelOnyx Contest Bot.")
-        return
-
-    await message.answer(f"Раздел сохранён: {topic.name} · ID {topic.message_thread_id}")
 
 
 @router.message()

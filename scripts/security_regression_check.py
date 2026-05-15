@@ -53,7 +53,8 @@ def main() -> int:
     require("expected_amount=payment.total_amount" in bot_billing, "Telegram Stars activation must validate amount")
     require("expected_currency=payment.currency" in bot_billing, "Telegram Stars activation must validate currency")
     require("build_public_media_url" in bot_contest, "Bot publication must support public media URL fallback")
-    require('Command("topic")' in bot_forum_topics, "Forum topics must support explicit /topic registration")
+    require("ForumTopicRecorderMiddleware" in bot_forum_topics, "Forum topics must be recorded silently before handlers")
+    require('Command("topic")' not in bot_forum_topics, "Forum topic recording must not expose a public /topic command")
     require("message_thread_id" in bot_forum_topics, "Forum topic registration must keep Telegram thread ID")
 
     print("security regression checks passed")

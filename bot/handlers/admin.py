@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def is_private_chat(message: Message) -> bool:
+    return getattr(message.chat, "type", None) == "private"
+
+
 async def has_owner_access(user_id: int) -> bool:
     if config.is_admin(user_id):
         return True
@@ -58,6 +62,9 @@ async def cmd_start(message: Message, command: CommandObject):
     @param command объект команды с аргументами
     """
     logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
+    if not is_private_chat(message):
+        return
+
     args = command.args  # Получаем аргументы после /start
     
     # Обработка startapp для регистрации в конкурсе (используется из каналов)
@@ -151,6 +158,9 @@ async def cmd_admin(message: Message):
     
     @param message сообщение от пользователя
     """
+    if not is_private_chat(message):
+        return
+
     if not await has_owner_access(message.from_user.id):
         await message.answer("❌ Для доступа к панели владельца нужна активная подписка. Оформи её командой /subscribe.")
         return
@@ -176,6 +186,9 @@ async def cmd_help(message: Message):
     
     @param message сообщение от пользователя
     """
+    if not is_private_chat(message):
+        return
+
     if await has_owner_access(message.from_user.id):
         help_text = (
             "📋 <b>Команды владельца:</b>\n\n"
@@ -183,9 +196,8 @@ async def cmd_help(message: Message):
             "/admin - Открыть панель владельца\n"
             "/subscribe - Купить подписку Telegram Stars\n"
             "/paykassa - Купить подписку через PayKassa\n"
-            "/topic Название - сохранить текущий раздел forum-группы для публикации\n"
             "/help - Показать это сообщение\n\n"
-            "Для управления конкурсами используй команду /admin. Если группа с разделами, отправь /topic прямо в нужном разделе."
+            "Для управления конкурсами используй команду /admin."
         )
     else:
         help_text = (

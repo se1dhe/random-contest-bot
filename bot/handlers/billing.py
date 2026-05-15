@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def is_private_chat(message: Message) -> bool:
+    return getattr(message.chat, "type", None) == "private"
+
+
 def parse_subscription_payload(payload: str) -> tuple[str, str] | None:
     parts = payload.split(":")
     if len(parts) != 3 or parts[0] != "subscription":
@@ -31,6 +35,9 @@ def parse_subscription_payload(payload: str) -> tuple[str, str] | None:
 
 @router.message(Command("subscribe"))
 async def cmd_subscribe(message: Message):
+    if not is_private_chat(message):
+        return
+
     plan = get_subscription_plan()
     async with AsyncSessionLocal() as db:
         payment = await create_subscription_payment(
@@ -51,6 +58,9 @@ async def cmd_subscribe(message: Message):
 
 @router.message(Command("paykassa"))
 async def cmd_paykassa(message: Message):
+    if not is_private_chat(message):
+        return
+
     from shared.services.subscription_service import build_paykassa_checkout_url
 
     async with AsyncSessionLocal() as db:
@@ -109,6 +119,9 @@ async def process_pre_checkout(query: PreCheckoutQuery):
 
 @router.message(F.successful_payment)
 async def process_successful_payment(message: Message):
+    if not is_private_chat(message):
+        return
+
     payment = message.successful_payment
     payload = payment.invoice_payload if payment else ""
     parsed_payload = parse_subscription_payload(payload)
