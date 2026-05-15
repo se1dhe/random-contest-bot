@@ -54,8 +54,14 @@ interface ForumTopic {
     name: string;
 }
 
+interface CreatedContest {
+    id: number;
+    title: string;
+    status: string;
+}
+
 interface ContestFormProps {
-    onSuccess: () => void;
+    onSuccess: (contest?: CreatedContest) => void;
     onCancel: () => void;
 }
 
@@ -264,7 +270,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         if (image) formData.append('image', image);
 
         try {
-            await axios.post('/api/admin/contests', formData, {
+            const response = await axios.post<CreatedContest>('/api/admin/contests', formData, {
                 headers: {
                     '_auth': initData,
                     'Content-Type': 'multipart/form-data'
@@ -272,7 +278,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                 params: { _auth: initData } // Backend might expect it here too
             });
             hapticFeedback('heavy');
-            onSuccess();
+            onSuccess(response.data);
         } catch (err: unknown) {
             console.error('Failed to create contest', err);
             hapticFeedback('rigid');
@@ -436,7 +442,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                         )}
                                         {forumTopics && forumTopics.length === 0 && (
                                             <div className="text-[10px] text-white/35">
-                                                Бот еще не видел топики этой группы. Напишите любое сообщение в нужном топике или используйте ручной ID.
+                                                Бот еще не видел топики этой группы. Отправьте /topic Название прямо в нужном разделе или используйте ручной ID.
                                             </div>
                                         )}
                                     </GlassCard>

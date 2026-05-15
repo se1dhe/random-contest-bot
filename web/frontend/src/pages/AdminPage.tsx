@@ -77,6 +77,11 @@ export const AdminPage: React.FC = () => {
         require_instagram_follow?: boolean;
         instagram_follow_days_required?: number;
     }
+    interface CreatedContest {
+        id: number;
+        title: string;
+        status: string;
+    }
     interface ContestPreview {
         contest_id: number;
         title: string;
@@ -627,13 +632,35 @@ export const AdminPage: React.FC = () => {
         setContestFilter(filter);
     };
 
-    const handleCreateSuccess = async () => {
+    const handleCreateSuccess = async (createdContest?: CreatedContest) => {
         setIsCreating(false);
         setActiveTab('contests');
         setContestFilter('all');
+        setContestSearch('');
         setContestPage(1);
         setSuccessMessage('Конкурс создан');
-        await refreshContestDetails();
+        await queryClient.invalidateQueries({ queryKey: ['admin_contests'] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_contests_paged'] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_analytics', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_analytics_growth', initData] });
+        await queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
+
+        const contestsResult = await queryClient.fetchQuery<AdminContest[]>({
+            queryKey: ['admin_contests', initData],
+            queryFn: async () => {
+                const res = await axios.get('/api/admin/contests', {
+                    headers: { '_auth': initData },
+                    params: { _auth: initData }
+                });
+                return res.data;
+            },
+        });
+        const created = createdContest
+            ? contestsResult.find(contest => contest.id === createdContest.id)
+            : undefined;
+        if (created) {
+            setSelectedContest(created);
+        }
     };
 
     const handleRefreshAll = () => {
