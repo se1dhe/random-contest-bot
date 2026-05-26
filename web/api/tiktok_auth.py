@@ -237,7 +237,7 @@ async def get_tiktok_subscription_status(
             access_token=creds.token,
             username=creds.tiktok_login or creds.tiktok_user_id,
             target_channel_id=target_channel_id,
-            min_follow_days=days_required,
+            min_follow_days=0,
         )
         if result is None:
             return {"connected": True, "met": False, "status": TIKTOK_STATUS_UNVERIFIED}

@@ -262,48 +262,6 @@ class Config:
         value = self.get('tiktok', 'RESEARCH_ACCESS_TOKEN', '')
         return value if value else None
 
-    @property
-    def instagram_enabled(self) -> bool:
-        """Включена ли OAuth интеграция Instagram."""
-        return self.get_bool('instagram', 'ENABLED', False)
-
-    @property
-    def instagram_client_id(self) -> Optional[str]:
-        """OAuth Client ID для Instagram."""
-        value = self.get('instagram', 'CLIENT_ID', '')
-        return value if value else None
-
-    @property
-    def instagram_client_secret(self) -> Optional[str]:
-        """OAuth Client Secret для Instagram."""
-        value = self.get('instagram', 'CLIENT_SECRET', '')
-        return value if value else None
-
-    @property
-    def instagram_scopes(self) -> str:
-        """OAuth scopes для Instagram."""
-        return self.get('instagram', 'SCOPES', 'instagram_business_basic,instagram_business_manage_messages')
-
-    @property
-    def instagram_authorize_url(self) -> str:
-        """OAuth authorize endpoint для Instagram."""
-        return self.get('instagram', 'AUTHORIZE_URL', 'https://www.instagram.com/oauth/authorize')
-
-    @property
-    def instagram_token_url(self) -> str:
-        """OAuth token endpoint для Instagram."""
-        return self.get('instagram', 'TOKEN_URL', 'https://api.instagram.com/oauth/access_token')
-
-    @property
-    def instagram_userinfo_url(self) -> str:
-        """Instagram user info endpoint."""
-        return self.get('instagram', 'USERINFO_URL', 'https://graph.instagram.com/me?fields=id,username,name,account_type')
-
-    @property
-    def instagram_following_url(self) -> str:
-        """Instagram endpoint для проверки отношения, если приложение его поддерживает."""
-        return self.get('instagram', 'FOLLOWING_URL', 'https://graph.instagram.com/{user_id}?fields=username,is_user_follow_business')
-
 
 # Глобальный экземпляр конфигурации
 config = Config()

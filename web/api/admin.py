@@ -12,7 +12,7 @@ from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
 from shared.services.youtube_service import YouTubeService
-from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, TikTokChannel, InstagramChannel, Participant, AdminAction, ForumTopic
+from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, TikTokChannel, Participant, AdminAction, ForumTopic
 from database.models.contest import ContestStatus, ContestDrawMethod
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -124,11 +124,7 @@ class ContestCreate(BaseModel):
     youtube_subscription_days_required: int = 0  # Минимальное количество дней подписки
     youtube_channel_id: Optional[str] = None  # ID YouTube канала (UC...)
     require_tiktok_follow: bool = False  # Требовать фолловинг на TikTok
-    tiktok_follow_days_required: int = 0
     tiktok_channel_id: Optional[str] = None
-    require_instagram_follow: bool = False  # Требовать фолловинг на Instagram
-    instagram_follow_days_required: int = 0
-    instagram_channel_id: Optional[str] = None
     require_captcha: bool = False
     message_thread_id: Optional[int] = None
 
@@ -142,13 +138,6 @@ class YoutubeChannelCreate(BaseModel):
 
 class TikTokChannelCreate(BaseModel):
     """Модель создания TikTok аккаунта"""
-    channel_id: str
-    title: Optional[str] = None
-    description: Optional[str] = None
-
-
-class InstagramChannelCreate(BaseModel):
-    """Модель создания Instagram канала"""
     channel_id: str
     title: Optional[str] = None
     description: Optional[str] = None
@@ -729,11 +718,7 @@ async def get_contests(
             "youtube_subscription_days_required": contest.youtube_subscription_days_required,
             "youtube_channel_id": contest.youtube_channel_id,
             "require_tiktok_follow": bool(contest.tiktok_channel_id),
-            "tiktok_follow_days_required": contest.tiktok_follow_days_required,
             "tiktok_channel_id": contest.tiktok_channel_id,
-            "require_instagram_follow": bool(contest.instagram_channel_id),
-            "instagram_follow_days_required": contest.instagram_follow_days_required,
-            "instagram_channel_id": contest.instagram_channel_id,
             "require_captcha": bool(getattr(contest, "require_captcha", False)),
             "prizes": [
                 {
@@ -772,11 +757,7 @@ async def create_contest(
     youtube_subscription_days_required: int = Form(0),
     youtube_channel_id: Optional[str] = Form(None),
     require_tiktok_follow: bool = Form(False),
-    tiktok_follow_days_required: int = Form(0),
     tiktok_channel_id: Optional[str] = Form(None),
-    require_instagram_follow: bool = Form(False),
-    instagram_follow_days_required: int = Form(0),
-    instagram_channel_id: Optional[str] = Form(None),
     require_captcha: bool = Form(False),
     message_thread_id: Optional[int] = Form(None),
     post_to_sponsors: bool = Form(False),
@@ -798,9 +779,6 @@ async def create_contest(
     @param require_youtube_subscription требуется ли подписка на YouTube
     @param youtube_subscription_days_required минимальное количество дней подписки
     @param require_tiktok_follow требуется ли фолловинг TikTok
-    @param tiktok_follow_days_required минимальное количество дней фолловинга TikTok
-    @param require_instagram_follow требуется ли фолловинг Instagram
-    @param instagram_follow_days_required минимальное количество дней фолловинга Instagram
     @param image загружаемое изображение
     @param db сессия БД
     @param admin_id ID администратора
@@ -957,16 +935,6 @@ async def create_contest(
                 detail="Для этого конкурса требуется TikTok-канал, но он не указан."
             )
 
-    final_instagram_channel_id = None
-    if require_instagram_follow:
-        if instagram_channel_id and instagram_channel_id.strip():
-            final_instagram_channel_id = instagram_channel_id.strip()
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Для этого конкурса требуется Instagram-канал, но он не указан."
-            )
-
     final_message_thread_id = message_thread_id if message_thread_id and message_thread_id > 0 else None
     if final_message_thread_id:
         topic_result = await db.execute(
@@ -999,9 +967,6 @@ async def create_contest(
         youtube_channel_id=final_youtube_channel_id,
         youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
         tiktok_channel_id=final_tiktok_channel_id,
-        tiktok_follow_days_required=tiktok_follow_days_required if require_tiktok_follow else 0,
-        instagram_channel_id=final_instagram_channel_id,
-        instagram_follow_days_required=instagram_follow_days_required if require_instagram_follow else 0,
         require_captcha=require_captcha,
         image_path=image_path,
         post_to_sponsors=post_to_sponsors
@@ -1045,7 +1010,6 @@ async def create_contest(
             "sponsors": sponsors_data or [],
             "require_youtube_subscription": require_youtube_subscription,
             "require_tiktok_follow": require_tiktok_follow,
-            "require_instagram_follow": require_instagram_follow,
             "require_captcha": require_captcha,
         }
     )
@@ -1108,9 +1072,6 @@ async def duplicate_contest(
         youtube_channel_id=source.youtube_channel_id,
         youtube_subscription_days_required=source.youtube_subscription_days_required,
         tiktok_channel_id=source.tiktok_channel_id,
-        tiktok_follow_days_required=source.tiktok_follow_days_required,
-        instagram_channel_id=source.instagram_channel_id,
-        instagram_follow_days_required=source.instagram_follow_days_required,
         require_captcha=bool(getattr(source, "require_captcha", False)),
         image_path=source.image_path,
         post_to_sponsors=source.post_to_sponsors,
@@ -2215,124 +2176,6 @@ async def delete_tiktok_channel(
         admin_id=admin_id,
         action_type="tiktok_channel_deleted",
         target_type="tiktok_channel",
-        target_id=channel.channel_id,
-        payload={"title": channel.title}
-    )
-    await db.commit()
-
-    return {"success": True}
-
-
-@router.get("/instagram-channels")
-async def get_instagram_channels(
-    db: AsyncSession = Depends(get_db),
-    admin_id: int = Depends(verify_admin)
-):
-    """
-    Получить список Instagram каналов
-    """
-    query = select(InstagramChannel)
-    scoped = owner_filter(InstagramChannel, admin_id)
-    if scoped is not None:
-        query = query.where(scoped)
-    result = await db.execute(query)
-    channels = result.scalars().all()
-
-    return [
-        {
-            "channel_id": c.channel_id,
-            "title": c.title,
-            "description": c.description
-        }
-        for c in channels
-    ]
-
-
-@router.post("/instagram-channels")
-async def add_instagram_channel(
-    data: InstagramChannelCreate,
-    db: AsyncSession = Depends(get_db),
-    admin_id: int = Depends(verify_admin)
-):
-    """
-    Добавить Instagram канал
-    """
-    channel_id = data.channel_id.strip()
-    if not channel_id:
-        raise HTTPException(status_code=400, detail="ID Instagram канала не может быть пустым")
-
-    channel_id = channel_id.replace("https://instagram.com/", "").replace("http://instagram.com/", "").strip("/")
-
-    result = await db.execute(
-        select(InstagramChannel).where(InstagramChannel.channel_id == channel_id)
-    )
-    existing = result.scalar_one_or_none()
-    if existing:
-        if not is_super_admin(admin_id) and existing.owner_user_id not in (None, int(admin_id)):
-            raise HTTPException(status_code=409, detail="Этот Instagram канал уже привязан к другому владельцу")
-        raise HTTPException(status_code=400, detail="Такой Instagram канал уже добавлен")
-
-    await enforce_owner_limit(
-        db,
-        admin_id,
-        usage_key="instagram_channels",
-        limit_key="max_external_channels_per_platform",
-        detail="Достигнут лимит Instagram каналов по подписке",
-    )
-
-    title = (data.title or channel_id).strip()
-    if not title:
-        raise HTTPException(status_code=400, detail="Название Instagram канала не может быть пустым")
-
-    channel = InstagramChannel(
-        channel_id=channel_id,
-        owner_user_id=int(admin_id),
-        title=title,
-        description=data.description
-    )
-    db.add(channel)
-    await db.commit()
-    await db.refresh(channel)
-    await audit_admin(
-        db,
-        admin_id=admin_id,
-        action_type="instagram_channel_created",
-        target_type="instagram_channel",
-        target_id=channel.channel_id,
-        payload={"title": channel.title}
-    )
-    await db.commit()
-
-    return {
-        "channel_id": channel.channel_id,
-        "title": channel.title,
-        "description": channel.description
-    }
-
-
-@router.delete("/instagram-channels/{channel_id}")
-async def delete_instagram_channel(
-    channel_id: str,
-    db: AsyncSession = Depends(get_db),
-    admin_id: int = Depends(verify_admin)
-):
-    """
-    Удалить Instagram канал
-    """
-    result = await db.execute(
-        select(InstagramChannel).where(InstagramChannel.channel_id == channel_id)
-    )
-    channel = result.scalar_one_or_none()
-
-    require_owned(channel, admin_id, "Instagram канал не найден")
-
-    await db.delete(channel)
-    await db.commit()
-    await audit_admin(
-        db,
-        admin_id=admin_id,
-        action_type="instagram_channel_deleted",
-        target_type="instagram_channel",
         target_id=channel.channel_id,
         payload={"title": channel.title}
     )

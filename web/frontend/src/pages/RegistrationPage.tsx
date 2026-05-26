@@ -36,7 +36,7 @@ interface AutoCheckResponse {
     captcha_required?: boolean;
     external_conditions_met?: boolean;
     conditions: Array<{
-        type: 'telegram' | 'youtube' | 'tiktok' | 'instagram';
+        type: 'telegram' | 'youtube' | 'tiktok';
         id: string | number;
         title: string;
         username?: string | null;
@@ -74,7 +74,7 @@ interface ResultInfo {
 
 export const RegistrationPage: React.FC = () => {
     const [searchParams] = useSearchParams();
-    const { initData, hapticFeedback, tg, userId, openLink } = useTelegram();
+    const { initData, hapticFeedback, tg, userId } = useTelegram();
     const [isRegistering, setIsRegistering] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
     const [registerError, setRegisterError] = useState<string | null>(null);
@@ -84,7 +84,7 @@ export const RegistrationPage: React.FC = () => {
     const [revealedWinners, setRevealedWinners] = useState<number>(0);
     const [drawComplete, setDrawComplete] = useState(false);
     const [prizesOpen, setPrizesOpen] = useState(false);
-    const [pendingExternalAuth, setPendingExternalAuth] = useState<'youtube' | 'tiktok' | 'instagram' | null>(null);
+    const [pendingExternalAuth, setPendingExternalAuth] = useState<'youtube' | 'tiktok' | null>(null);
     const [captchaAnswer, setCaptchaAnswer] = useState('');
 
     const contestId = searchParams.get('contest_id');
@@ -118,7 +118,7 @@ export const RegistrationPage: React.FC = () => {
         if (pendingExternalAuth === condition.type && !condition.met) {
             return condition.connected ? t(language, 'checkingConnection') : t(language, 'waitingAuth');
         }
-        if ((condition.type === 'instagram' || condition.type === 'tiktok') && !condition.met) {
+        if (condition.type === 'tiktok' && !condition.met) {
             if (condition.verification_status === 'unverified') {
                 return t(language, 'conditionUnverified')
             }
@@ -403,18 +403,6 @@ export const RegistrationPage: React.FC = () => {
             } else {
                 setPendingExternalAuth('tiktok');
                 tg.openLink(`${window.location.origin}/api/tiktok/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`);
-            }
-        } else if (condition.type === 'instagram') {
-            const target = condition.id.toString().trim();
-            if (condition.connected) {
-                const url = target.startsWith('http') ? target : `https://instagram.com/${target}`;
-                tg.openLink(url);
-            } else {
-                setPendingExternalAuth('instagram');
-                openLink(
-                    `${window.location.origin}/api/instagram/auth?contest_id=${contestId}&user_id=${userId}&_auth=${encodeURIComponent(initData)}`,
-                    { try_browser: 'chrome' }
-                );
             }
         }
         setRegisterError(null);
@@ -779,7 +767,7 @@ export const RegistrationPage: React.FC = () => {
                                             </div>
                                             <div className="space-y-1">
                                                 <p className="text-sm font-semibold text-white">
-                                                    {t(language, 'finishAuth', { service: pendingExternalAuth === 'instagram' ? 'Instagram' : pendingExternalAuth === 'youtube' ? 'YouTube' : 'TikTok' })}
+                                                    {t(language, 'finishAuth', { service: pendingExternalAuth === 'youtube' ? 'YouTube' : 'TikTok' })}
                                                 </p>
                                                 <p className="text-xs text-white/60">
                                                     {t(language, 'autoCheckHint')}
@@ -817,9 +805,7 @@ export const RegistrationPage: React.FC = () => {
                                         isConnected={condition.connected}
                                         statusText={getConditionStatusText(condition)}
                                         actionLabel={
-                                            condition.type === 'instagram'
-                                                ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} Instagram`
-                                                : condition.type === 'youtube'
+                                            condition.type === 'youtube'
                                                     ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} YouTube`
                                                     : condition.type === 'tiktok'
                                                         ? `${condition.connected ? t(language, 'open') : t(language, 'connect')} TikTok`

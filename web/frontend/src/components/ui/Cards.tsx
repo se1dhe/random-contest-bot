@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, type HTMLMotionProps } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { CheckCircle2, ExternalLink, Instagram, Music2, Youtube } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Music2, Youtube } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -24,7 +24,7 @@ export const GlassCard: React.FC<HTMLMotionProps<'div'>> = ({
 );
 
 interface ConditionItemProps {
-    type: 'telegram' | 'youtube' | 'tiktok' | 'instagram';
+    type: 'telegram' | 'youtube' | 'tiktok';
     label: string;
     isMet: boolean;
     isConnected?: boolean;
@@ -46,9 +46,7 @@ export const ConditionItem: React.FC<ConditionItemProps> = ({
         ? 'bg-blue-500/20 text-blue-400'
         : type === 'youtube'
             ? 'bg-red-500/20 text-red-400'
-            : type === 'tiktok'
-                ? 'bg-slate-500/20 text-white/80'
-                : 'bg-pink-500/20 text-pink-300';
+            : 'bg-slate-500/20 text-white/80';
 
     const actionText = actionLabel || (
         type === 'telegram'
@@ -75,7 +73,6 @@ export const ConditionItem: React.FC<ConditionItemProps> = ({
                     {type === 'telegram' && <ExternalLink size={18} />}
                     {type === 'youtube' && <Youtube size={18} />}
                     {type === 'tiktok' && <Music2 size={18} />}
-                    {type === 'instagram' && <Instagram size={18} />}
                 </div>
                 <div className="flex flex-col">
                     <span className="text-sm font-medium text-white/90 line-clamp-1">{label}</span>

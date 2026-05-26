@@ -55,11 +55,10 @@ PUBLISH_FORBIDDEN_CODE="$(request POST "$BASE_URL/api/publish/contest/1" "" "$TM
 [ "$PUBLISH_FORBIDDEN_CODE" = "403" ] || fail "POST /api/publish/contest/1 without auth expected 403, got $PUBLISH_FORBIDDEN_CODE"
 pass "Publish endpoint is protected"
 
-echo "[5/10] OAuth provider status endpoints"
-for provider in instagram tiktok; do
-  STATUS_CODE="$(request GET "$BASE_URL/api/$provider/status" "" "$TMP_DIR/${provider}_status.json")"
-  [ "$STATUS_CODE" = "200" ] || fail "GET /api/$provider/status expected 200, got $STATUS_CODE"
-  python3 - "$TMP_DIR/${provider}_status.json" "$provider" <<'PY'
+echo "[5/9] TikTok OAuth status endpoint"
+STATUS_CODE="$(request GET "$BASE_URL/api/tiktok/status" "" "$TMP_DIR/tiktok_status.json")"
+[ "$STATUS_CODE" = "200" ] || fail "GET /api/tiktok/status expected 200, got $STATUS_CODE"
+python3 - "$TMP_DIR/tiktok_status.json" "tiktok" <<'PY'
 import json, sys
 path, provider = sys.argv[1], sys.argv[2]
 with open(path, "r", encoding="utf-8") as f:
@@ -71,17 +70,16 @@ if not isinstance(data["redirect_uri"], str) or not data["redirect_uri"]:
     raise SystemExit(f"{provider} redirect_uri is empty")
 print("OK")
 PY
-done
-pass "OAuth status endpoints return valid schema"
+pass "TikTok OAuth status endpoint returns valid schema"
 
-echo "[6/10] Admin validation check (invalid status)"
+echo "[6/9] Admin validation check (invalid status)"
 INVALID_STATUS_CODE="$(request GET "$BASE_URL/api/admin/contests?status=unknown&user_id=0" "" "$TMP_DIR/admin_invalid_status.json")"
 if [ "$INVALID_STATUS_CODE" != "403" ] && [ "$INVALID_STATUS_CODE" != "400" ]; then
   fail "Expected 403 or 400 for invalid status check, got $INVALID_STATUS_CODE"
 fi
 pass "Invalid admin request does not return 500"
 
-echo "[7/10] Optional public contest auto-check"
+echo "[7/9] Optional public contest auto-check"
 if [ -n "${TEST_PUBLIC_CONTEST_ID:-}" ] && [ -n "${TEST_PUBLIC_USER_ID:-}" ]; then
   AUTO_CHECK_CODE="$(request GET "$BASE_URL/api/contests/$TEST_PUBLIC_CONTEST_ID/auto-check?user_id=$TEST_PUBLIC_USER_ID" "" "$TMP_DIR/auto_check.json")"
   [ "$AUTO_CHECK_CODE" = "200" ] || fail "GET /api/contests/$TEST_PUBLIC_CONTEST_ID/auto-check expected 200, got $AUTO_CHECK_CODE"
@@ -102,7 +100,7 @@ else
   echo "ℹ️  TEST_PUBLIC_CONTEST_ID or TEST_PUBLIC_USER_ID not set, skipping public auto-check"
 fi
 
-echo "[8/10] Optional authorized checks"
+echo "[8/9] Optional authorized checks"
 if [ -n "${ADMIN_AUTH:-}" ]; then
   AUTHED_CONTESTS_CODE="$(curl -sS -o "$TMP_DIR/admin_contests_paged.json" -w "%{http_code}" \
     "$BASE_URL/api/admin/contests?paginated=true&limit=5&offset=0&_auth=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$ADMIN_AUTH")")"
@@ -154,12 +152,5 @@ else
   echo "ℹ️  ADMIN_AUTH not set, skipping authorized regression checks"
 fi
 
-echo "[9/10] Instagram auth endpoint smoke"
-INSTAGRAM_AUTH_CODE="$(request GET "$BASE_URL/api/instagram/auth?contest_id=1&user_id=1" "" "$TMP_DIR/instagram_auth_redirect.html")"
-if [ "$INSTAGRAM_AUTH_CODE" != "302" ] && [ "$INSTAGRAM_AUTH_CODE" != "307" ] && [ "$INSTAGRAM_AUTH_CODE" != "500" ]; then
-  fail "Instagram auth endpoint expected redirect or configuration error status, got $INSTAGRAM_AUTH_CODE"
-fi
-pass "Instagram auth endpoint responds without route errors"
-
-echo "[10/10] Completed"
+echo "[9/9] Completed"
 echo "API regression checks passed"

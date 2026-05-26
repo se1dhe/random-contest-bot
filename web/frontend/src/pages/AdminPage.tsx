@@ -17,7 +17,6 @@ import {
     CheckCircle2,
     Clock,
     Youtube,
-    Instagram,
     Music2,
     Trash2,
     RefreshCw,
@@ -73,9 +72,6 @@ export const AdminPage: React.FC = () => {
         require_youtube_subscription?: boolean;
         youtube_subscription_days_required?: number;
         require_tiktok_follow?: boolean;
-        tiktok_follow_days_required?: number;
-        require_instagram_follow?: boolean;
-        instagram_follow_days_required?: number;
         require_captcha?: boolean;
     }
     interface CreatedContest {
@@ -139,11 +135,6 @@ export const AdminPage: React.FC = () => {
         description?: string;
     }
     interface AdminTikTokChannel {
-        channel_id: string;
-        title: string;
-        description?: string;
-    }
-    interface AdminInstagramChannel {
         channel_id: string;
         title: string;
         description?: string;
@@ -214,7 +205,6 @@ export const AdminPage: React.FC = () => {
             draft_contests: number;
             youtube_channels: number;
             tiktok_channels: number;
-            instagram_channels: number;
         };
     }
     interface PaginatedContestsResponse {
@@ -227,7 +217,7 @@ export const AdminPage: React.FC = () => {
     const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
 
     // Channel adding state
-    const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | 'tiktok' | 'instagram' | null>(null);
+    const [addingChannelType, setAddingChannelType] = useState<'telegram' | 'youtube' | 'tiktok' | null>(null);
     const [newChannelInput, setNewChannelInput] = useState('');
     const [isAddingChannel, setIsAddingChannel] = useState(false);
     const [activeChannelId, setActiveChannelId] = useState<number | string | null>(null);
@@ -241,7 +231,7 @@ export const AdminPage: React.FC = () => {
     const [contestFilter, setContestFilter] = useState<'all' | 'scheduled' | 'active' | 'draft' | 'finished' | 'results_published'>('all');
     const [contestPage, setContestPage] = useState(1);
     const [actionSearch, setActionSearch] = useState('');
-    const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel' | 'instagram_channel'>('all');
+    const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel'>('all');
     const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
     const [paymentLoading, setPaymentLoading] = useState<'paykassa' | 'stars' | null>(null);
 
@@ -327,8 +317,6 @@ export const AdminPage: React.FC = () => {
         youtube_channel_deleted: 'YouTube-канал удален',
         tiktok_channel_created: 'TikTok-аккаунт добавлен',
         tiktok_channel_deleted: 'TikTok-аккаунт удален',
-        instagram_channel_created: 'Instagram-канал добавлен',
-        instagram_channel_deleted: 'Instagram-канал удален',
     };
 
     const formatHistoryDetails = (entry: AdminHistoryItem) => {
@@ -394,7 +382,7 @@ export const AdminPage: React.FC = () => {
             if (parsed.contestFilter && ['all', 'scheduled', 'active', 'draft', 'finished', 'results_published'].includes(parsed.contestFilter)) {
                 setContestFilter(parsed.contestFilter);
             }
-            if (parsed.actionFilter && ['all', 'contest', 'channel', 'youtube_channel', 'tiktok_channel', 'instagram_channel'].includes(parsed.actionFilter)) {
+            if (parsed.actionFilter && ['all', 'contest', 'channel', 'youtube_channel', 'tiktok_channel'].includes(parsed.actionFilter)) {
                 setActionFilter(parsed.actionFilter);
             }
             if (typeof parsed.contestSearch === 'string') {
@@ -544,18 +532,6 @@ export const AdminPage: React.FC = () => {
         queryKey: ['admin_tiktok_channels', initData],
         queryFn: async () => {
             const res = await axios.get('/api/admin/tiktok-channels', {
-                headers: { '_auth': initData },
-                params: { _auth: initData }
-            });
-            return res.data;
-        },
-        enabled: !!initData && (activeTab === 'channels' || isCreating),
-    });
-
-    const { data: instagramChannels, refetch: refetchInstagramChannels } = useQuery<AdminInstagramChannel[]>({
-        queryKey: ['admin_instagram_channels', initData],
-        queryFn: async () => {
-            const res = await axios.get('/api/admin/instagram-channels', {
                 headers: { '_auth': initData },
                 params: { _auth: initData }
             });
@@ -719,7 +695,6 @@ export const AdminPage: React.FC = () => {
         refetchChannels();
         refetchYoutubeChannels();
         refetchTikTokChannels();
-        refetchInstagramChannels();
         refetchAnalytics();
         refetchGrowth();
         refetchHealth();
@@ -1188,26 +1163,6 @@ export const AdminPage: React.FC = () => {
                     params: { _auth: initData }
                 });
                 await refetchTikTokChannels();
-            } else {
-                // Instagram
-                let channelId = newChannelInput.trim();
-                channelId = channelId
-                    .replace('https://instagram.com/', '')
-                    .replace('http://instagram.com/', '')
-                    .replace('instagram.com/', '')
-                    .replace(/^@/, '')
-                    .replace(/\/+$/, '')
-                    .trim();
-
-                await axios.post('/api/admin/instagram-channels', {
-                    channel_id: channelId,
-                    title: channelId,
-                    description: ''
-                }, {
-                    headers: { '_auth': initData },
-                    params: { _auth: initData }
-                });
-                await refetchInstagramChannels();
             }
             hapticFeedback('heavy');
             setAddingChannelType(null);
@@ -1217,9 +1172,9 @@ export const AdminPage: React.FC = () => {
                     ? 'Telegram-канал добавлен'
                     : addingChannelType === 'youtube'
                         ? 'YouTube-канал добавлен'
-                        : addingChannelType === 'tiktok'
-                            ? 'TikTok-аккаунт добавлен'
-                            : 'Instagram-канал добавлен'
+                    : addingChannelType === 'tiktok'
+                        ? 'TikTok-аккаунт добавлен'
+                        : 'Канал добавлен'
             );
         } catch (err: unknown) {
             console.error('Failed to add channel', err);
@@ -1291,26 +1246,6 @@ export const AdminPage: React.FC = () => {
             console.error('Failed to delete TikTok channel', err);
             hapticFeedback('rigid');
             setError(extractErrorMessage(err, 'Не удалось удалить TikTok аккаунт'));
-        } finally {
-            setActiveChannelId(null);
-        }
-    };
-
-    const handleDeleteInstagramChannel = async (channelId: string) => {
-        if (!confirm('Вы уверены, что хотите удалить этот Instagram канал?')) return;
-        setError(null);
-        try {
-            await axios.delete(`/api/admin/instagram-channels/${channelId}`, {
-                headers: { '_auth': initData },
-                params: { _auth: initData }
-            });
-            await refetchInstagramChannels();
-            hapticFeedback('heavy');
-            setSuccessMessage('Instagram-канал удален');
-        } catch (err: unknown) {
-            console.error('Failed to delete Instagram channel', err);
-            hapticFeedback('rigid');
-            setError(extractErrorMessage(err, 'Не удалось удалить Instagram канал'));
         } finally {
             setActiveChannelId(null);
         }
@@ -1479,15 +1414,7 @@ export const AdminPage: React.FC = () => {
                                     <div className="pt-2">
                                         <div className="flex items-center space-x-2 text-violet-400">
                                             <AlertCircle size={14} />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется TikTok ({selectedContest.tiktok_follow_days_required} дн.)</span>
-                                        </div>
-                                    </div>
-                                )}
-                                {selectedContest.require_instagram_follow && (
-                                    <div className="pt-2">
-                                        <div className="flex items-center space-x-2 text-emerald-400">
-                                            <AlertCircle size={14} />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Instagram ({selectedContest.instagram_follow_days_required} дн.)</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется TikTok</span>
                                         </div>
                                     </div>
                                 )}
@@ -1961,8 +1888,7 @@ export const AdminPage: React.FC = () => {
                                                         'Соцсети',
                                                         Math.max(
                                                             subscriptionStatus.usage.youtube_channels,
-                                                            subscriptionStatus.usage.tiktok_channels,
-                                                            subscriptionStatus.usage.instagram_channels
+                                                            subscriptionStatus.usage.tiktok_channels
                                                         ),
                                                         subscriptionStatus.plan.limits.max_external_channels_per_platform
                                                     ],
@@ -2305,12 +2231,11 @@ export const AdminPage: React.FC = () => {
                             {activeTab === 'channels' && (
                                 <motion.div key="channels" className="space-y-4">
                                     <GlassCard className="p-4 border-white/5">
-                                        <div className="grid grid-cols-4 gap-2">
+                                        <div className="grid grid-cols-3 gap-2">
                                             {[
                                                 { label: 'Telegram', value: channels?.length || 0 },
                                                 { label: 'YouTube', value: youtubeChannels?.length || 0 },
                                                 { label: 'TikTok', value: tiktokChannels?.length || 0 },
-                                                { label: 'Instagram', value: instagramChannels?.length || 0 },
                                             ].map((item) => (
                                                 <div key={item.label} className="rounded-xl bg-white/5 px-2 py-3 text-center">
                                                     <div className="text-lg font-black text-white">{item.value}</div>
@@ -2328,7 +2253,7 @@ export const AdminPage: React.FC = () => {
                                         >
                                             <div className="flex justify-between items-center mb-2">
                                                 <h4 className="font-bold text-sm">
-                                                    Добавить {addingChannelType === 'telegram' ? 'Telegram' : addingChannelType === 'youtube' ? 'YouTube' : addingChannelType === 'tiktok' ? 'TikTok' : 'Instagram'}
+                                                    Добавить {addingChannelType === 'telegram' ? 'Telegram' : addingChannelType === 'youtube' ? 'YouTube' : 'TikTok'}
                                                 </h4>
                                                 <button onClick={() => setAddingChannelType(null)} className="text-white/40">
                                                     <Trash2 size={16} />
@@ -2341,9 +2266,7 @@ export const AdminPage: React.FC = () => {
                                                         ? "@username канала"
                                                         : addingChannelType === 'youtube'
                                                             ? "ID канала (UC...)"
-                                                            : addingChannelType === 'tiktok'
-                                                                ? "@username или ссылка TikTok"
-                                                                : "username или ссылка Instagram"
+                                                            : "@username или ссылка TikTok"
                                                 }
                                                 value={newChannelInput}
                                                 onChange={e => setNewChannelInput(e.target.value)}
@@ -2561,62 +2484,6 @@ export const AdminPage: React.FC = () => {
                                             {(!tiktokChannels || tiktokChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет TikTok аккаунтов</p>}
                                         </div>
 
-                                        {/* Instagram Channels */}
-                                        <div className="space-y-3">
-                                            <div className="flex items-center justify-between px-1">
-                                                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Instagram Каналы</h3>
-                                                <button
-                                                    onClick={() => { setAddingChannelType('instagram'); setNewChannelInput(''); setError(null); }}
-                                                    className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg flex items-center space-x-1 active:scale-95 transition-all"
-                                                >
-                                                    <Plus size={14} />
-                                                    <span>Добавить</span>
-                                                </button>
-                                            </div>
-                                            {instagramChannels?.map((ch, i) => (
-                                                <GlassCard
-                                                    key={i}
-                                                    className={cn(
-                                                        "relative p-4 flex items-center justify-between border-white/5 bg-emerald-500/5 group",
-                                                        activeChannelId === ch.channel_id ? "z-20" : "z-0"
-                                                    )}
-                                                >
-                                                    <div className="flex items-center space-x-4 min-w-0 flex-1">
-                                                        <div className="w-10 h-10 bg-pink-500/20 rounded-xl flex items-center justify-center text-pink-300 font-black shrink-0">
-                                                            <Instagram size={20} />
-                                                        </div>
-                                                        <div className="overflow-hidden min-w-0">
-                                                            <div className="text-sm font-bold truncate pr-2">{ch.title}</div>
-                                                            <div className="text-[10px] text-white/40 truncate">{ch.channel_id}</div>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); setActiveChannelId(activeChannelId === ch.channel_id ? null : ch.channel_id); }}
-                                                        className="p-2 text-white/20 hover:text-white/60 transition-colors rounded-lg hover:bg-white/5 shrink-0 ml-2"
-                                                    >
-                                                        <Settings size={16} />
-                                                    </button>
-                                                    {activeChannelId === ch.channel_id && (
-                                                        <motion.div
-                                                            initial={{ opacity: 0, scale: 0.9 }}
-                                                            animate={{ opacity: 1, scale: 1 }}
-                                                            className="absolute right-2 top-12 z-10 w-48 bg-[#1c1c1e] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-                                                        >
-                                                            <div className="p-1 space-y-1">
-                                                                <button
-                                                                    className="w-full flex items-center space-x-2 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                                    onClick={() => handleDeleteInstagramChannel(ch.channel_id)}
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                    <span>Удалить канал</span>
-                                                                </button>
-                                                            </div>
-                                                        </motion.div>
-                                                    )}
-                                                </GlassCard>
-                                            ))}
-                                            {(!instagramChannels || instagramChannels.length === 0) && <p className="text-xs text-white/20 text-center py-4">Нет Instagram каналов</p>}
-                                        </div>
                                     </div>
                                 </motion.div>
                             )}

@@ -29,9 +29,9 @@ interface JournalTabProps {
     recentActions?: JournalAction[];
     filteredRecentActions: JournalAction[];
     actionSearch: string;
-    actionFilter: 'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel' | 'instagram_channel';
+    actionFilter: 'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel';
     onActionSearchChange: (value: string) => void;
-    onActionFilterChange: (value: 'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel' | 'instagram_channel') => void;
+    onActionFilterChange: (value: 'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel') => void;
     historyActionLabels: Record<string, string>;
     formatHistoryDetails: (entry: JournalAction) => string | null;
     contests?: JournalContest[];
@@ -78,11 +78,10 @@ export const JournalTab: React.FC<JournalTabProps> = ({
                         { id: 'channel', label: 'Telegram' },
                         { id: 'youtube_channel', label: 'YouTube' },
                         { id: 'tiktok_channel', label: 'TikTok' },
-                        { id: 'instagram_channel', label: 'Instagram' },
                     ].map((filter) => (
                         <button
                             key={filter.id}
-                            onClick={() => onActionFilterChange(filter.id as 'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel' | 'instagram_channel')}
+                            onClick={() => onActionFilterChange(filter.id as 'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel')}
                             className={cn(
                                 'px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors',
                                 actionFilter === filter.id

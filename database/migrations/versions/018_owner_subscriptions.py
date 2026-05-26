@@ -49,9 +49,6 @@ def upgrade():
     op.add_column("tiktok_channels", sa.Column("owner_user_id", sa.BigInteger(), nullable=True))
     op.create_index(op.f("ix_tiktok_channels_owner_user_id"), "tiktok_channels", ["owner_user_id"], unique=False)
 
-    op.add_column("instagram_channels", sa.Column("owner_user_id", sa.BigInteger(), nullable=True))
-    op.create_index(op.f("ix_instagram_channels_owner_user_id"), "instagram_channels", ["owner_user_id"], unique=False)
-
     owner_subscription_status.create(op.get_bind(), checkfirst=True)
     subscription_payment_status.create(op.get_bind(), checkfirst=True)
 
@@ -112,8 +109,6 @@ def downgrade():
     subscription_payment_status.drop(op.get_bind(), checkfirst=True)
     owner_subscription_status.drop(op.get_bind(), checkfirst=True)
 
-    op.drop_index(op.f("ix_instagram_channels_owner_user_id"), table_name="instagram_channels")
-    op.drop_column("instagram_channels", "owner_user_id")
     op.drop_index(op.f("ix_tiktok_channels_owner_user_id"), table_name="tiktok_channels")
     op.drop_column("tiktok_channels", "owner_user_id")
     op.drop_index(op.f("ix_youtube_channels_owner_user_id"), table_name="youtube_channels")

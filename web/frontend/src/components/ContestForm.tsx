@@ -8,7 +8,6 @@ import {
     Trash2,
     ChevronLeft,
     ChevronRight,
-    Instagram,
     Music2,
     Youtube,
     Check,
@@ -41,11 +40,6 @@ interface AdminYoutubeChannel {
     description?: string;
 }
 interface AdminTikTokChannel {
-    channel_id: string;
-    title: string;
-    description?: string;
-}
-interface AdminInstagramChannel {
     channel_id: string;
     title: string;
     description?: string;
@@ -88,11 +82,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [requireYoutube, setRequireYoutube] = useState(false);
     const [youtubeDays, setYoutubeDays] = useState(0);
     const [requireTikTok, setRequireTikTok] = useState(false);
-    const [tiktokDays, setTikTokDays] = useState(0);
     const [tiktokChannelId, setTikTokChannelId] = useState('');
-    const [requireInstagram, setRequireInstagram] = useState(false);
-    const [instagramDays, setInstagramDays] = useState(0);
-    const [instagramChannelId, setInstagramChannelId] = useState('');
     const [requireCaptcha, setRequireCaptcha] = useState(false);
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -118,9 +108,6 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const youtubeChannelMissing = requireYoutube && !youtubeChannelId.trim();
     const youtubeDaysInvalid = requireYoutube && youtubeDays < 0;
     const tiktokChannelMissing = requireTikTok && !tiktokChannelId.trim();
-    const tiktokDaysInvalid = requireTikTok && tiktokDays < 0;
-    const instagramChannelMissing = requireInstagram && !instagramChannelId.trim();
-    const instagramDaysInvalid = requireInstagram && instagramDays < 0;
     const manualThreadIdMissing = topicChoice === 'manual' && !manualThreadId.trim();
     const manualThreadIdInvalid =
         topicChoice === 'manual' &&
@@ -128,10 +115,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const hasStep3ValidationErrors =
         youtubeChannelMissing ||
         youtubeDaysInvalid ||
-        tiktokChannelMissing ||
-        tiktokDaysInvalid ||
-        instagramChannelMissing ||
-        instagramDaysInvalid;
+        tiktokChannelMissing;
 
 
     // Queries
@@ -183,18 +167,6 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         enabled: !!initData,
     });
 
-    const { data: instagramChannels } = useQuery<AdminInstagramChannel[]>({
-        queryKey: ['admin_instagram_channels', initData],
-        queryFn: async () => {
-            const res = await axios.get('/api/admin/instagram-channels', {
-                headers: { '_auth': initData },
-                params: { _auth: initData }
-            });
-            return res.data;
-        },
-        enabled: !!initData,
-    });
-
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -234,7 +206,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const handleSubmit = async () => {
         if (hasStep3ValidationErrors) {
             hapticFeedback('rigid');
-            setError('Заполните обязательные поля условий YouTube/TikTok/Instagram перед созданием конкурса.');
+            setError('Заполните обязательные поля условий YouTube/TikTok перед созданием конкурса.');
             return;
         }
 
@@ -253,9 +225,6 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         formData.append('require_youtube_subscription', requireYoutube.toString());
         formData.append('youtube_subscription_days_required', youtubeDays.toString());
         formData.append('require_tiktok_follow', requireTikTok.toString());
-        formData.append('tiktok_follow_days_required', tiktokDays.toString());
-        formData.append('require_instagram_follow', requireInstagram.toString());
-        formData.append('instagram_follow_days_required', instagramDays.toString());
         formData.append('require_captcha', requireCaptcha.toString());
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
@@ -269,7 +238,6 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         if (selectedThreadId) formData.append('message_thread_id', selectedThreadId);
         if (requireYoutube) formData.append('youtube_channel_id', youtubeChannelId);
         if (requireTikTok) formData.append('tiktok_channel_id', tiktokChannelId);
-        if (requireInstagram) formData.append('instagram_channel_id', instagramChannelId);
         if (image) formData.append('image', image);
 
         try {
@@ -723,80 +691,6 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                                 )}
                                                 {tiktokChannelMissing && (
                                                     <div className="mt-1 text-[10px] text-red-300">Укажите TikTok аккаунт для проверки фолловинга.</div>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="form-label text-[10px]">Минимум дней фолловинга</label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    className="form-input py-2 text-xs"
-                                                    value={tiktokDays}
-                                                    onChange={e => setTikTokDays(parseInt(e.target.value) || 0)}
-                                                />
-                                                {tiktokDaysInvalid && (
-                                                    <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
-                                                )}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </GlassCard>
-                            </div>
-
-                            {/* Instagram Condition */}
-                            <div className="space-y-3">
-                                <label className="form-label">Условие Instagram</label>
-                                <GlassCard className={`p-4 transition-all ${requireInstagram ? 'border-emerald-500/20 bg-emerald-500/5' : ''}`}>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center space-x-3">
-                                            <div className={`p-2 rounded-lg ${requireInstagram ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/40'}`}>
-                                                <Instagram size={20} />
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-bold">Фолловинг Instagram</div>
-                                                <div className="text-[10px] text-white/40">Требовать от участников</div>
-                                            </div>
-                                        </div>
-                                        <div
-                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireInstagram ? 'bg-emerald-500' : 'bg-white/20'}`}
-                                            onClick={() => setRequireInstagram(!requireInstagram)}
-                                        >
-                                            <motion.div animate={{ x: requireInstagram ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
-                                        </div>
-                                    </div>
-
-                                    {requireInstagram && (
-                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-2 border-t border-white/5 space-y-3">
-                                            <div>
-                                                <label className="form-label text-[10px]">Instagram канал</label>
-                                                <select
-                                                    className="form-select text-xs py-2 bg-emerald-500/5 border-emerald-500/20 focus:border-emerald-500/40"
-                                                    value={instagramChannelId}
-                                                    onChange={e => setInstagramChannelId(e.target.value)}
-                                                >
-                                                    <option value="">Выберите канал...</option>
-                                                    {instagramChannels?.map(c => (
-                                                        <option key={c.channel_id} value={c.channel_id}>{c.title}</option>
-                                                    ))}
-                                                </select>
-                                                {!instagramChannels?.length && (
-                                                    <div className="mt-1 text-[8px] text-emerald-300">Сначала добавьте Instagram каналы в разделе «Каналы».</div>
-                                                )}
-                                                {instagramChannelMissing && (
-                                                    <div className="mt-1 text-[10px] text-red-300">Укажите Instagram-канал для проверки фолловинга.</div>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="form-label text-[10px]">Минимум дней фолловинга</label>
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    className="form-input py-2 text-xs"
-                                                    value={instagramDays}
-                                                    onChange={e => setInstagramDays(parseInt(e.target.value) || 0)}
-                                                />
-                                                {instagramDaysInvalid && (
-                                                    <div className="mt-1 text-[10px] text-red-300">Значение не может быть отрицательным.</div>
                                                 )}
                                             </div>
                                         </motion.div>

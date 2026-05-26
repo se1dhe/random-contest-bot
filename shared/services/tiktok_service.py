@@ -75,8 +75,7 @@ async def check_tiktok_follow(
 
     Официальная проверка доступна через TikTok Research API и только для публичных
     пользователей 18+, у которых открыт список following. Дата начала подписки в
-    этом endpoint не возвращается, поэтому min_follow_days > 0 считается
-    неподтверждаемым условием.
+    этом endpoint не возвращается, поэтому min_follow_days намеренно игнорируется.
     """
     research_token = config.tiktok_research_access_token
     if not research_token or not username:
@@ -92,8 +91,6 @@ async def check_tiktok_follow(
     response.raise_for_status()
     data = response.json().get("data") or {}
     following = data.get("user_following") or []
-    if min_follow_days > 0:
-        return None
     target = target_channel_id.strip().lstrip("@").lower()
     for item in following:
         candidate = str((item or {}).get("username") or "").strip().lstrip("@").lower()

@@ -41,9 +41,6 @@ class Contest(BaseModel):
     youtube_channel_id = Column(String(255), nullable=True)  # ID YouTube канала для обязательной подписки
     youtube_subscription_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней подписки
     tiktok_channel_id = Column(String(255), nullable=True)  # Username TikTok аккаунта для обязательного фолловинга
-    tiktok_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга TikTok
-    instagram_channel_id = Column(String(255), nullable=True)  # Username/ID Instagram аккаунта для обязательного фолловинга
-    instagram_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Instagram
     require_captcha = Column(Boolean, default=False, nullable=False)  # Требовать простую капчу при регистрации
     image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
     post_to_sponsors = Column(Boolean, default=False, nullable=False)

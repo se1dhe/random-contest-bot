@@ -1,7 +1,7 @@
 """Add TikTok channels table
 
 Revision ID: 017_tiktok_channels
-Revises: 016_tiktok_instagram
+Revises: 016_tiktok
 Create Date: 2026-05-13
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "017_tiktok_channels"
-down_revision = "016_tiktok_instagram"
+down_revision = "016_tiktok"
 branch_labels = None
 depends_on = None
 

@@ -176,7 +176,7 @@ def format_subscription_status_text(status: dict) -> str:
         f"Telegram каналы: {usage['channels']}/{limits['max_channels']}\n"
         f"Активные конкурсы: {usage['active_contests']}/{limits['max_active_contests']}\n"
         f"Черновики: {usage['draft_contests']}/{limits['max_draft_contests']}\n"
-        f"YouTube/TikTok/Instagram: до {limits['max_external_channels_per_platform']} на платформу"
+        f"YouTube/TikTok: до {limits['max_external_channels_per_platform']} на платформу"
     )
 
 

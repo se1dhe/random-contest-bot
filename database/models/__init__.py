@@ -6,10 +6,8 @@ from .prize import Prize
 from .sponsor import Sponsor
 from .youtube_credentials import YouTubeCredentials
 from .tiktok_credentials import TikTokCredentials
-from .instagram_credentials import InstagramCredentials
 from .youtube_channel import YoutubeChannel
 from .tiktok_channel import TikTokChannel
-from .instagram_channel import InstagramChannel
 from .admin_action import AdminAction
 from .forum_topic import ForumTopic
 from .owner_subscription import (
@@ -28,10 +26,8 @@ __all__ = [
     'Sponsor',
     'YouTubeCredentials',
     'TikTokCredentials',
-    'InstagramCredentials',
     'YoutubeChannel',
     'TikTokChannel',
-    'InstagramChannel',
     'AdminAction',
     'ForumTopic',
     'OwnerSubscription',

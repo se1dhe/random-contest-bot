@@ -212,9 +212,6 @@ async def get_contest(
         "youtube_channel_id": contest.youtube_channel_id,
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
         "tiktok_channel_id": contest.tiktok_channel_id,
-        "tiktok_follow_days_required": contest.tiktok_follow_days_required,
-        "instagram_channel_id": contest.instagram_channel_id,
-        "instagram_follow_days_required": contest.instagram_follow_days_required,
         "require_captcha": bool(getattr(contest, "require_captcha", False)),
     }
 
@@ -273,9 +270,6 @@ async def get_contest_info(
         "youtube_channel_id": contest.youtube_channel_id,
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
         "tiktok_channel_id": contest.tiktok_channel_id,
-        "tiktok_follow_days_required": contest.tiktok_follow_days_required,
-        "instagram_channel_id": contest.instagram_channel_id,
-        "instagram_follow_days_required": contest.instagram_follow_days_required,
         "require_captcha": bool(getattr(contest, "require_captcha", False)),
         "image_path": contest.image_path
     }
@@ -365,26 +359,14 @@ async def check_subscription(
             tiktok_subscribed = await check_tiktok_subscription(
                 user_id=user_id,
                 target_channel_id=contest.tiktok_channel_id,
-                days_required=contest.tiktok_follow_days_required,
+                days_required=0,
                 db=db,
             )
-
-    instagram_subscribed = None
-    if contest.instagram_channel_id:
-        from web.api.instagram_auth import get_instagram_subscription_status
-        instagram_status = await get_instagram_subscription_status(
-            user_id=user_id,
-            target_channel_id=contest.instagram_channel_id,
-            days_required=contest.instagram_follow_days_required,
-            db=db,
-        )
-        instagram_subscribed = instagram_status["met"] if instagram_status["connected"] else None
     
     return {
         "subscriptions": subscriptions,
         "youtube_subscribed": youtube_subscribed,
         "tiktok_subscribed": tiktok_subscribed,
-        "instagram_subscribed": instagram_subscribed,
     }
 
 
@@ -499,7 +481,7 @@ async def auto_check(
         tiktok_status = await get_tiktok_subscription_status(
             user_id=user_id,
             target_channel_id=contest.tiktok_channel_id,
-            days_required=contest.tiktok_follow_days_required,
+            days_required=0,
             db=db,
         )
         tiktok_condition = {
@@ -512,25 +494,6 @@ async def auto_check(
         }
         conditions.append(tiktok_condition)
 
-    instagram_condition = None
-    if contest.instagram_channel_id:
-        from web.api.instagram_auth import get_instagram_subscription_status
-        instagram_status = await get_instagram_subscription_status(
-            user_id=user_id,
-            target_channel_id=contest.instagram_channel_id,
-            days_required=contest.instagram_follow_days_required,
-            db=db,
-        )
-        instagram_condition = {
-            "type": "instagram",
-            "id": contest.instagram_channel_id,
-            "title": translate(contest.language, "instagram_channel"),
-            "met": instagram_status["met"],
-            "connected": instagram_status["connected"],
-            "verification_status": instagram_status["status"],
-        }
-        conditions.append(instagram_condition)
-        
     all_met = all(c['met'] for c in conditions)
     captcha_required = bool(getattr(contest, "require_captcha", False))
     
@@ -693,7 +656,7 @@ async def register_participant(
         tiktok_status = await get_tiktok_subscription_status(
             user_id=user_id,
             target_channel_id=contest.tiktok_channel_id,
-            days_required=contest.tiktok_follow_days_required,
+            days_required=0,
             db=db,
         )
         if not tiktok_status["connected"]:
@@ -709,60 +672,9 @@ async def register_participant(
                     status_code=400,
                     detail=translate(language, "tiktok_follow_unverified")
                 )
-            if contest.tiktok_follow_days_required > 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail=translate(
-                        language,
-                        "tiktok_follow_days_required",
-                        days=contest.tiktok_follow_days_required,
-                        unit=day_unit(language, contest.tiktok_follow_days_required),
-                    )
-                )
             raise HTTPException(
                 status_code=400,
                 detail=translate(language, "tiktok_follow_required")
-            )
-
-    # Проверяем фолловинг Instagram, если требуется
-    if contest.instagram_channel_id:
-        from web.api.instagram_auth import (
-            INSTAGRAM_STATUS_UNVERIFIED,
-            get_instagram_subscription_status,
-        )
-
-        instagram_status = await get_instagram_subscription_status(
-            user_id=user_id,
-            target_channel_id=contest.instagram_channel_id,
-            days_required=contest.instagram_follow_days_required,
-            db=db,
-        )
-        if not instagram_status["connected"]:
-            raise HTTPException(
-                status_code=400,
-                detail=translate(language, "instagram_auth_required")
-            )
-
-        is_following_instagram = instagram_status["met"]
-        if not is_following_instagram:
-            if instagram_status["status"] == INSTAGRAM_STATUS_UNVERIFIED:
-                raise HTTPException(
-                    status_code=400,
-                    detail=translate(language, "instagram_follow_unverified")
-                )
-            if contest.instagram_follow_days_required > 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail=translate(
-                        language,
-                        "instagram_follow_days_required",
-                        days=contest.instagram_follow_days_required,
-                        unit=day_unit(language, contest.instagram_follow_days_required),
-                    )
-                )
-            raise HTTPException(
-                status_code=400,
-                detail=translate(language, "instagram_follow_required")
             )
 
     # Извлекаем данные из initData если есть

@@ -14,7 +14,6 @@ from database.models import (
     Channel,
     Contest,
     ContestStatus,
-    InstagramChannel,
     OwnerSubscription,
     OwnerSubscriptionStatus,
     SubscriptionPayment,
@@ -202,9 +201,6 @@ async def get_owner_usage(db: AsyncSession, user_id: int) -> dict:
         ),
         "tiktok_channels": await count(
             select(func.count(TikTokChannel.id)).where(TikTokChannel.owner_user_id == owner_id)
-        ),
-        "instagram_channels": await count(
-            select(func.count(InstagramChannel.id)).where(InstagramChannel.owner_user_id == owner_id)
         ),
     }
 
