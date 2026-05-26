@@ -132,6 +132,14 @@ def list_subscription_plans() -> list[dict]:
     return items
 
 
+def get_paykassa_currency() -> str:
+    return os.getenv("PAYKASSA_CURRENCY", "USDT").strip().upper() or "USDT"
+
+
+def get_paykassa_system() -> str:
+    return os.getenv("PAYKASSA_SYSTEM", "TRON_TRC20").strip()
+
+
 async def has_active_subscription(db: AsyncSession, user_id: int) -> bool:
     return await get_active_subscription(db, user_id) is not None
 
@@ -229,7 +237,7 @@ async def create_subscription_payment(
         provider=provider,
         plan_code=plan_code,
         external_charge_id=external_charge_id or str(uuid.uuid4()),
-        currency="XTR" if provider == "telegram_stars" else "USD",
+        currency="XTR" if provider == "telegram_stars" else get_paykassa_currency(),
         amount=plan["stars"] if provider == "telegram_stars" else plan["fiat_cents"],
         status=SubscriptionPaymentStatus.PENDING,
     )
@@ -322,7 +330,7 @@ def build_paykassa_checkout_url(payment: SubscriptionPayment) -> Optional[str]:
     separator = "&" if "?" in base_url else "?"
     return (
         f"{base_url}{separator}"
-        f"order_id={payment.external_charge_id}&amount={payment.amount / 100:.2f}&currency=USD"
+        f"order_id={payment.external_charge_id}&amount={payment.amount / 100:.2f}&currency={get_paykassa_currency()}"
     )
 
 
@@ -338,7 +346,7 @@ async def create_paykassa_checkout_url(payment: SubscriptionPayment) -> Optional
         return build_paykassa_checkout_url(payment)
 
     api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.pro/sci/0.4/index.php").strip()
-    currency = (payment.currency or "USD").upper()
+    currency = (payment.currency or get_paykassa_currency()).upper()
     amount = f"{payment.amount / 100:.2f}"
     payload = {
         "func": "sci_create_order",
@@ -349,7 +357,7 @@ async def create_paykassa_checkout_url(payment: SubscriptionPayment) -> Optional
         "order_id": payment.external_charge_id,
         "comment": f"TelOnyx Contest subscription {payment.plan_code}",
         "paid_commission": os.getenv("PAYKASSA_PAID_COMMISSION", "shop"),
-        "system": os.getenv("PAYKASSA_SYSTEM", "").strip(),
+        "system": get_paykassa_system(),
         "domain": os.getenv("PAYKASSA_DOMAIN", "").strip(),
     }
     payload = {key: value for key, value in payload.items() if value != ""}
