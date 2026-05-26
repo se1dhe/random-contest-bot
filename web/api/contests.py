@@ -161,15 +161,9 @@ async def get_contest(
     
     # Проверяем, не закончился ли конкурс по дате
     if contest.end_date:
-        # Получаем текущее время из БД для корректного сравнения
-        from sqlalchemy import text
-        result = await db.execute(text("SELECT NOW()::timestamp"))
-        now_db = result.scalar()
-        
-        # Убираем timezone если есть (end_date хранится без timezone)
-        if now_db and hasattr(now_db, 'tzinfo') and now_db.tzinfo is not None:
-            from datetime import datetime
-            now_db = datetime(now_db.year, now_db.month, now_db.day, now_db.hour, now_db.minute, now_db.second, now_db.microsecond)
+        from shared.services.redis_service import get_database_now_kyiv
+
+        now_db = await get_database_now_kyiv()
         
         logger.info(f"Contest {contest_id} end_date: {contest.end_date}, now_db: {now_db}")
         

@@ -76,7 +76,7 @@ async def release_lock(key: str):
     await redis.delete(lock_key)
 
 
-async def _get_database_now_kyiv() -> datetime:
+async def get_database_now_kyiv() -> datetime:
     """Return DB current time as naive Kyiv local timestamp."""
     async with AsyncSessionLocal() as db:
         now_result = await db.execute(text(f"SELECT (NOW() AT TIME ZONE '{KYIV_TIMEZONE}')::timestamp"))
@@ -96,7 +96,7 @@ async def schedule_contest_finish(contest_id: int, end_date: datetime):
     # Вычисляем TTL в секундах
     # end_date уже в киевском времени без таймзоны
     # Получаем текущее время из БД (киевское время)
-    now = await _get_database_now_kyiv()
+    now = await get_database_now_kyiv()
     
     # end_date уже без таймзоны (киевское время)
     # now тоже без таймзоны (киевское время)
@@ -134,7 +134,7 @@ async def schedule_contest_publish(contest_id: int, publish_at: datetime):
     redis = await get_redis()
     key = f"contest:publish:{contest_id}"
 
-    now = await _get_database_now_kyiv()
+    now = await get_database_now_kyiv()
 
     ttl_seconds = int((publish_at - now).total_seconds())
     if ttl_seconds > 0:

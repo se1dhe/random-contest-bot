@@ -67,9 +67,9 @@ async def restore_contest_schedules(bot: Bot):
     from database.db import AsyncSessionLocal
     from bot.services.contest_service import ContestService
     from database.models.contest import ContestStatus
-    from sqlalchemy import select, func
+    from sqlalchemy import select
     from database.models import Contest
-    from shared.services.redis_service import schedule_contest_finish
+    from shared.services.redis_service import get_database_now_kyiv, schedule_contest_finish
     from bot.tasks.redis_listener import handle_contest_expired
     
     async with AsyncSessionLocal() as db:
@@ -85,15 +85,7 @@ async def restore_contest_schedules(bot: Bot):
         if active_contests:
             logger.info(f"Восстановление планирования для {len(active_contests)} активных конкурсов")
             
-            # Получаем текущее время из БД в киевском часовом поясе (без timezone)
-            # PostgreSQL настроен на Europe/Kyiv, поэтому NOW() уже в киевском времени
-            from sqlalchemy import text
-            now_result = await db.execute(text("SELECT NOW()::timestamp"))
-            now_db = now_result.scalar()
-            # Убираем timezone если есть (end_date хранится без timezone)
-            if now_db and hasattr(now_db, 'tzinfo') and now_db.tzinfo is not None:
-                from datetime import datetime
-                now_db = datetime(now_db.year, now_db.month, now_db.day, now_db.hour, now_db.minute, now_db.second, now_db.microsecond)
+            now_db = await get_database_now_kyiv()
             
             for contest in active_contests:
                 # Сравниваем даты напрямую (обе naive datetime)
@@ -116,10 +108,10 @@ async def restore_scheduled_publications(bot: Bot):
     """
     Восстановить отложенные публикации при старте бота
     """
-    from sqlalchemy import select, text
+    from sqlalchemy import select
     from database.models import Contest
     from database.models.contest import ContestStatus
-    from shared.services.redis_service import schedule_contest_publish
+    from shared.services.redis_service import get_database_now_kyiv, schedule_contest_publish
     from bot.tasks.redis_listener import handle_contest_publish
 
     async with AsyncSessionLocal() as db:
@@ -135,11 +127,7 @@ async def restore_scheduled_publications(bot: Bot):
             logger.info("Отложенных публикаций для восстановления не найдено")
             return
 
-        now_result = await db.execute(text("SELECT NOW()::timestamp"))
-        now_db = now_result.scalar()
-        if now_db and hasattr(now_db, 'tzinfo') and now_db.tzinfo is not None:
-            from datetime import datetime
-            now_db = datetime(now_db.year, now_db.month, now_db.day, now_db.hour, now_db.minute, now_db.second, now_db.microsecond)
+        now_db = await get_database_now_kyiv()
 
         for contest in scheduled_contests:
             if contest.publish_at and contest.publish_at <= now_db:

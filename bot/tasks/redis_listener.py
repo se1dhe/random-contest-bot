@@ -6,7 +6,7 @@ import logging
 from database.db import AsyncSessionLocal
 from bot.services.contest_service import ContestService
 from bot.services.draw_service import DrawService
-from shared.services.redis_service import get_redis, acquire_lock, release_lock
+from shared.services.redis_service import get_database_now_kyiv, get_redis, acquire_lock, release_lock
 from shared.services.subscription_service import get_subscription_status
 from aiogram import Bot
 from shared.config import config
@@ -280,7 +280,7 @@ async def contest_schedule_watchdog(bot: Bot, interval_seconds: int = 60):
     Периодически проверяет просроченные публикации и завершения конкурсов.
     Страховка на случай пропуска Redis keyspace событий.
     """
-    from sqlalchemy import select, text
+    from sqlalchemy import select
     from database.models import Contest
     from database.models.contest import ContestStatus
 
@@ -289,8 +289,7 @@ async def contest_schedule_watchdog(bot: Bot, interval_seconds: int = 60):
     while True:
         try:
             async with AsyncSessionLocal() as db:
-                now_result = await db.execute(text("SELECT NOW()::timestamp"))
-                now_db = now_result.scalar()
+                now_db = await get_database_now_kyiv()
 
                 overdue_finishes_result = await db.execute(
                     select(Contest.id).where(
