@@ -66,7 +66,7 @@ def subscription_menu_text(is_owner: bool = False) -> str:
     )
     if is_owner:
         return intro + "У тебя уже есть доступ. Открой панель владельца или проверь лимиты подписки."
-    return intro + "Чтобы проводить конкурсы в своих каналах, выбери тариф и способ оплаты."
+    return intro + "Чтобы проводить конкурсы в своих каналах, посмотри тарифы и оформи подписку."
 
 
 def build_subscription_menu_keyboard(include_admin: bool = False) -> InlineKeyboardMarkup:
@@ -78,14 +78,8 @@ def build_subscription_menu_keyboard(include_admin: bool = False) -> InlineKeybo
             InlineKeyboardButton(text="Открыть админ-панель", web_app={"url": get_admin_webapp_url()})
         ])
     rows.extend([
-        [
-            InlineKeyboardButton(text="Купить Stars", callback_data="billing:stars:contest_pro"),
-            InlineKeyboardButton(text="Купить PayKassa", callback_data="billing:paykassa:contest_pro"),
-        ],
-        [
-            InlineKeyboardButton(text="Тарифы", callback_data="billing:plans"),
-            InlineKeyboardButton(text="Моя подписка", callback_data="billing:status"),
-        ],
+        [InlineKeyboardButton(text="Тарифы и оплата", callback_data="billing:plans")],
+        [InlineKeyboardButton(text="Моя подписка", callback_data="billing:status")],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
