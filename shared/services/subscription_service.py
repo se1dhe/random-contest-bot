@@ -137,7 +137,20 @@ def get_paykassa_currency() -> str:
 
 
 def get_paykassa_system() -> str:
-    return os.getenv("PAYKASSA_SYSTEM", "TRON_TRC20").strip()
+    value = os.getenv("PAYKASSA_SYSTEM", "TRON_TRC20").strip()
+    system_ids = {
+        "TRON_TRC20": "30",
+        "TRON": "27",
+        "TON": "33",
+        "BITCOIN": "11",
+        "BTC": "11",
+        "ETHEREUM": "12",
+        "ETH": "12",
+        "ETHEREUM_ERC20": "32",
+        "BINANCESMARTCHAIN_BEP20": "31",
+        "BSC_BEP20": "31",
+    }
+    return system_ids.get(value.upper(), value)
 
 
 async def has_active_subscription(db: AsyncSession, user_id: int) -> bool:
@@ -345,7 +358,7 @@ async def create_paykassa_checkout_url(payment: SubscriptionPayment) -> Optional
     if not _paykassa_sci_configured():
         return build_paykassa_checkout_url(payment)
 
-    api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.pro/sci/0.4/index.php").strip()
+    api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.app/sci/0.4/index.php").strip()
     currency = (payment.currency or get_paykassa_currency()).upper()
     amount = f"{payment.amount / 100:.2f}"
     payload = {
@@ -384,7 +397,7 @@ async def confirm_paykassa_private_hash(private_hash: str) -> Optional[dict]:
     if not private_hash or not _paykassa_sci_configured():
         return None
 
-    api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.pro/sci/0.4/index.php").strip()
+    api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.app/sci/0.4/index.php").strip()
     payload = {
         "func": "sci_confirm_order",
         "sci_id": os.getenv("PAYKASSA_SCI_ID", "").strip(),
