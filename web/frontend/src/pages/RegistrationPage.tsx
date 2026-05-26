@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 import { useTelegram } from '../hooks/useTelegram';
 import { GlassCard, ConditionItem } from '../components/ui/Cards';
 import { Button } from '../components/ui/Button';
-import { Trophy, Users, Clock, CheckCircle, Crown, Gift, Calendar, RefreshCw, ExternalLink } from 'lucide-react';
+import { Trophy, Users, Clock, CheckCircle, Crown, Gift, Calendar, RefreshCw, ExternalLink, ShieldCheck } from 'lucide-react';
 import { CountdownTimer } from '../components/ui/CountdownTimer';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -26,12 +26,15 @@ interface ContestInfo {
     end_date: string;
     prize_count: number;
     participants_count: number;
+    require_captcha?: boolean;
     prizes?: Array<{ id: number; place: number; title: string; description?: string | null }>;
 }
 
 interface AutoCheckResponse {
     can_register: boolean;
     is_registered: boolean;
+    captcha_required?: boolean;
+    external_conditions_met?: boolean;
     conditions: Array<{
         type: 'telegram' | 'youtube' | 'tiktok' | 'instagram';
         id: string | number;
@@ -82,6 +85,7 @@ export const RegistrationPage: React.FC = () => {
     const [drawComplete, setDrawComplete] = useState(false);
     const [prizesOpen, setPrizesOpen] = useState(false);
     const [pendingExternalAuth, setPendingExternalAuth] = useState<'youtube' | 'tiktok' | 'instagram' | null>(null);
+    const [captchaAnswer, setCaptchaAnswer] = useState('');
 
     const contestId = searchParams.get('contest_id');
 
@@ -114,7 +118,7 @@ export const RegistrationPage: React.FC = () => {
         if (pendingExternalAuth === condition.type && !condition.met) {
             return condition.connected ? t(language, 'checkingConnection') : t(language, 'waitingAuth');
         }
-        if (condition.type === 'instagram' && !condition.met) {
+        if ((condition.type === 'instagram' || condition.type === 'tiktok') && !condition.met) {
             if (condition.verification_status === 'unverified') {
                 return t(language, 'conditionUnverified')
             }
@@ -144,6 +148,19 @@ export const RegistrationPage: React.FC = () => {
         },
         enabled: !!contestId && !!initData,
         refetchInterval: 3000,
+    });
+
+    const { data: captchaChallenge, refetch: refetchCaptcha } = useQuery<{ question: string; token: string; expires_in: number }>({
+        queryKey: ['captcha', contestId, initData, userId],
+        queryFn: async () => {
+            const res = await axios.get(`/api/contests/${contestId}/captcha`, {
+                headers: { 'X-Telegram-Init-Data': initData },
+                params: { _auth: initData }
+            });
+            return res.data;
+        },
+        enabled: !!contestId && !!initData && !!userId && !!contest?.require_captcha && !!status?.external_conditions_met && !status?.is_registered,
+        staleTime: 0,
     });
 
     const pendingExternalCondition = useMemo(() => {
@@ -182,6 +199,35 @@ export const RegistrationPage: React.FC = () => {
         }
     }, [contestId, initData, userId, hapticFeedback, refetchStatus, language]);
 
+    const handleCaptchaRegister = React.useCallback(async () => {
+        if (!captchaChallenge) {
+            await refetchCaptcha();
+            return;
+        }
+        setIsRegistering(true);
+        setRegisterError(null);
+        try {
+            await axios.post(`/api/contests/${contestId}/register`, {
+                captcha_token: captchaChallenge.token,
+                captcha_answer: captchaAnswer,
+            }, {
+                headers: { 'X-Telegram-Init-Data': initData },
+                params: { _auth: initData, user_id: userId }
+            });
+            hapticFeedback('medium');
+            setCaptchaAnswer('');
+            refetchStatus();
+        } catch (err) {
+            const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+            setRegisterError(detail || t(language, 'captchaInvalid'));
+            hapticFeedback('rigid');
+            setCaptchaAnswer('');
+            refetchCaptcha();
+        } finally {
+            setIsRegistering(false);
+        }
+    }, [captchaAnswer, captchaChallenge, contestId, hapticFeedback, initData, language, refetchCaptcha, refetchStatus, userId]);
+
     const handleSuccess = React.useCallback(() => {
         setIsSuccess(true);
         hapticFeedback('heavy');
@@ -195,7 +241,7 @@ export const RegistrationPage: React.FC = () => {
 
     // Auto-registration logic
     useEffect(() => {
-        if (status?.can_register && !status?.is_registered && !isRegistering && !isSuccess) {
+        if (status?.can_register && !status?.captcha_required && !status?.is_registered && !isRegistering && !isSuccess) {
             handleRegister();
         }
         if (status?.is_registered && !isSuccess) {
@@ -786,6 +832,53 @@ export const RegistrationPage: React.FC = () => {
                                     <p className="p-4 text-center text-white/40 text-sm">{t(language, 'noConditions')}</p>
                                 )}
                             </GlassCard>
+                            {contest.require_captcha && status?.external_conditions_met && !status?.is_registered && (
+                                <GlassCard className="p-4 border border-cyan-500/20 bg-cyan-500/5 space-y-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className="rounded-xl bg-cyan-500/15 p-2 text-cyan-300">
+                                            <ShieldCheck size={18} />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <div className="text-sm font-bold text-white">{t(language, 'captchaTitle')}</div>
+                                            <div className="text-xs text-white/50">{t(language, 'captchaHint')}</div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-[1fr_1.4fr] gap-2">
+                                        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-center text-lg font-black text-cyan-200">
+                                            {captchaChallenge?.question || '...'}
+                                        </div>
+                                        <input
+                                            inputMode="numeric"
+                                            value={captchaAnswer}
+                                            onChange={(event) => setCaptchaAnswer(event.target.value.replace(/[^\d-]/g, ''))}
+                                            placeholder={t(language, 'captchaAnswer')}
+                                            className="form-input"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                                        <Button
+                                            type="button"
+                                            onClick={handleCaptchaRegister}
+                                            disabled={!captchaAnswer.trim() || isRegistering || !captchaChallenge}
+                                            isLoading={isRegistering}
+                                        >
+                                            {t(language, 'register')}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            onClick={() => {
+                                                setCaptchaAnswer('');
+                                                refetchCaptcha();
+                                            }}
+                                            disabled={isRegistering}
+                                            className="px-3"
+                                        >
+                                            <RefreshCw size={16} />
+                                        </Button>
+                                    </div>
+                                </GlassCard>
+                            )}
                         </section>
 
                         <footer className="pt-2">

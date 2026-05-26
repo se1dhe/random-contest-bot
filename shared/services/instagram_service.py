@@ -103,6 +103,11 @@ async def check_instagram_follow(
         return None
 
     payload = response.json()
+    if isinstance(payload, dict) and isinstance(payload.get("is_user_follow_business"), bool):
+        if min_follow_days > 0:
+            return None
+        return bool(payload["is_user_follow_business"])
+
     items = []
     if isinstance(payload, list):
         items = payload

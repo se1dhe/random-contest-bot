@@ -43,6 +43,11 @@ const messages: Record<ContestLanguage, Record<string, string>> = {
         followRequired: 'Нужен фолловинг канала',
         open: 'Открыть',
         connect: 'Подключить',
+        captchaTitle: 'Подтверждение участия',
+        captchaHint: 'Решите короткую задачу, чтобы завершить регистрацию.',
+        captchaAnswer: 'Ответ',
+        captchaInvalid: 'Неверный ответ капчи. Попробуйте ещё раз.',
+        register: 'Зарегистрироваться',
     },
     uk: {
         loadingContest: 'Завантажуємо інформацію про конкурс...',
@@ -80,6 +85,11 @@ const messages: Record<ContestLanguage, Record<string, string>> = {
         followRequired: 'Потрібен фолловинг каналу',
         open: 'Відкрити',
         connect: 'Підключити',
+        captchaTitle: 'Підтвердження участі',
+        captchaHint: 'Розвʼяжіть коротке завдання, щоб завершити реєстрацію.',
+        captchaAnswer: 'Відповідь',
+        captchaInvalid: 'Неправильна відповідь капчі. Спробуйте ще раз.',
+        register: 'Зареєструватися',
     },
     en: {
         loadingContest: 'Loading contest info...',
@@ -117,6 +127,11 @@ const messages: Record<ContestLanguage, Record<string, string>> = {
         followRequired: 'Channel follow is required',
         open: 'Open',
         connect: 'Connect',
+        captchaTitle: 'Participation check',
+        captchaHint: 'Solve the short task to complete registration.',
+        captchaAnswer: 'Answer',
+        captchaInvalid: 'Invalid captcha answer. Try again.',
+        register: 'Register',
     },
 };
 

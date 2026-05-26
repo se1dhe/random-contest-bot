@@ -12,7 +12,8 @@ import {
     Music2,
     Youtube,
     Check,
-    MessageSquare
+    MessageSquare,
+    ShieldCheck
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { GlassCard } from './ui/Cards';
@@ -92,6 +93,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [requireInstagram, setRequireInstagram] = useState(false);
     const [instagramDays, setInstagramDays] = useState(0);
     const [instagramChannelId, setInstagramChannelId] = useState('');
+    const [requireCaptcha, setRequireCaptcha] = useState(false);
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -254,6 +256,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         formData.append('tiktok_follow_days_required', tiktokDays.toString());
         formData.append('require_instagram_follow', requireInstagram.toString());
         formData.append('instagram_follow_days_required', instagramDays.toString());
+        formData.append('require_captcha', requireCaptcha.toString());
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
         formData.append('post_to_sponsors', postToSponsors.toString());
@@ -798,6 +801,29 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                             </div>
                                         </motion.div>
                                     )}
+                                </GlassCard>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="form-label">Антибот-проверка</label>
+                                <GlassCard className={`p-4 transition-all ${requireCaptcha ? 'border-cyan-500/20 bg-cyan-500/5' : ''}`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center space-x-3">
+                                            <div className={`p-2 rounded-lg ${requireCaptcha ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/10 text-white/40'}`}>
+                                                <ShieldCheck size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold">Капча перед регистрацией</div>
+                                                <div className="text-[10px] text-white/40">Простая задача против автокликов</div>
+                                            </div>
+                                        </div>
+                                        <div
+                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${requireCaptcha ? 'bg-cyan-500' : 'bg-white/20'}`}
+                                            onClick={() => setRequireCaptcha(!requireCaptcha)}
+                                        >
+                                            <motion.div animate={{ x: requireCaptcha ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
+                                        </div>
+                                    </div>
                                 </GlassCard>
                             </div>
                         </div>

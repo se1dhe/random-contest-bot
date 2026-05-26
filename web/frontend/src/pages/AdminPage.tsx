@@ -76,6 +76,7 @@ export const AdminPage: React.FC = () => {
         tiktok_follow_days_required?: number;
         require_instagram_follow?: boolean;
         instagram_follow_days_required?: number;
+        require_captcha?: boolean;
     }
     interface CreatedContest {
         id: number;
@@ -1487,6 +1488,14 @@ export const AdminPage: React.FC = () => {
                                         <div className="flex items-center space-x-2 text-emerald-400">
                                             <AlertCircle size={14} />
                                             <span className="text-[10px] font-bold uppercase tracking-wider">Требуется Instagram ({selectedContest.instagram_follow_days_required} дн.)</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {selectedContest.require_captcha && (
+                                    <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-3 text-cyan-200">
+                                        <div className="flex items-center gap-2">
+                                            <AlertCircle size={16} />
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Требуется капча</span>
                                         </div>
                                     </div>
                                 )}

@@ -38,6 +38,7 @@ class ContestService:
         tiktok_follow_days_required: int = 0,
         instagram_channel_id: Optional[str] = None,
         instagram_follow_days_required: int = 0,
+        require_captcha: bool = False,
         image_path: Optional[str] = None,
         post_to_sponsors: bool = False,
         publish_at: Optional[datetime] = None
@@ -72,6 +73,7 @@ class ContestService:
             tiktok_follow_days_required=tiktok_follow_days_required,
             instagram_channel_id=instagram_channel_id,
             instagram_follow_days_required=instagram_follow_days_required,
+            require_captcha=bool(require_captcha),
             image_path=image_path,
             status=ContestStatus.DRAFT,
             post_to_sponsors=post_to_sponsors,

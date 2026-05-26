@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime
+import base64
+import hashlib
+import hmac
+import json
 import logging
+import secrets
+import time
 from database.db import get_db
 from database.models.contest import ContestStatus
 from bot.services.contest_service import ContestService
@@ -20,6 +26,61 @@ from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/contests", tags=["contests"])
 logger = logging.getLogger(__name__)
+CAPTCHA_TTL_SECONDS = 10 * 60
+
+
+def _captcha_secret() -> bytes:
+    return (config.secret_key or config.bot_token or "contest-captcha").encode("utf-8")
+
+
+def _sign_captcha_payload(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hmac.new(_captcha_secret(), raw, hashlib.sha256).hexdigest()
+
+
+def _encode_captcha_token(payload: dict) -> str:
+    body = {
+        "payload": payload,
+        "sig": _sign_captcha_payload(payload),
+    }
+    raw = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _captcha_answer_hash(answer: int, nonce: str) -> str:
+    raw = f"{answer}:{nonce}".encode("utf-8")
+    return hmac.new(_captcha_secret(), raw, hashlib.sha256).hexdigest()
+
+
+def _decode_captcha_token(token: str) -> dict:
+    padding = "=" * (-len(token) % 4)
+    raw = base64.urlsafe_b64decode((token + padding).encode("ascii"))
+    body = json.loads(raw.decode("utf-8"))
+    payload = body.get("payload")
+    signature = body.get("sig")
+    if not isinstance(payload, dict) or not signature:
+        raise ValueError("Invalid captcha token")
+    expected = _sign_captcha_payload(payload)
+    if not hmac.compare_digest(str(signature), expected):
+        raise ValueError("Invalid captcha signature")
+    return payload
+
+
+def verify_captcha_token(token: str, answer: str, contest_id: int, user_id: int) -> bool:
+    try:
+        payload = _decode_captcha_token(token)
+        if int(payload.get("contest_id")) != int(contest_id):
+            return False
+        if int(payload.get("user_id")) != int(user_id):
+            return False
+        if int(payload.get("exp")) < int(time.time()):
+            return False
+        submitted_answer = int(str(answer).strip())
+        answer_hash = str(payload.get("answer_hash") or "")
+        nonce = str(payload.get("nonce") or "")
+        return hmac.compare_digest(answer_hash, _captcha_answer_hash(submitted_answer, nonce))
+    except Exception:
+        return False
 
 
 async def get_telegram_service():
@@ -160,6 +221,7 @@ async def get_contest(
         "tiktok_follow_days_required": contest.tiktok_follow_days_required,
         "instagram_channel_id": contest.instagram_channel_id,
         "instagram_follow_days_required": contest.instagram_follow_days_required,
+        "require_captcha": bool(getattr(contest, "require_captcha", False)),
     }
 
 
@@ -220,7 +282,38 @@ async def get_contest_info(
         "tiktok_follow_days_required": contest.tiktok_follow_days_required,
         "instagram_channel_id": contest.instagram_channel_id,
         "instagram_follow_days_required": contest.instagram_follow_days_required,
+        "require_captcha": bool(getattr(contest, "require_captcha", False)),
         "image_path": contest.image_path
+    }
+
+
+@router.get("/{contest_id}/captcha")
+async def get_captcha_challenge(
+    contest_id: int,
+    auth_user_id: int = Depends(verify_telegram_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    if not contest:
+        raise HTTPException(status_code=404, detail="Конкурс не найден")
+    if not getattr(contest, "require_captcha", False):
+        raise HTTPException(status_code=400, detail="Капча для конкурса не включена")
+
+    a = secrets.randbelow(8) + 2
+    b = secrets.randbelow(8) + 2
+    nonce = secrets.token_urlsafe(8)
+    payload = {
+        "contest_id": int(contest_id),
+        "user_id": int(auth_user_id),
+        "answer_hash": _captcha_answer_hash(a + b, nonce),
+        "exp": int(time.time()) + CAPTCHA_TTL_SECONDS,
+        "nonce": nonce,
+    }
+    return {
+        "question": f"{a} + {b}",
+        "token": _encode_captcha_token(payload),
+        "expires_in": CAPTCHA_TTL_SECONDS,
     }
 
 
@@ -445,11 +538,14 @@ async def auto_check(
         conditions.append(instagram_condition)
         
     all_met = all(c['met'] for c in conditions)
+    captcha_required = bool(getattr(contest, "require_captcha", False))
     
     return {
         "status": "active",
         "is_registered": False,
-        "can_register": all_met,
+        "can_register": all_met and not captcha_required,
+        "external_conditions_met": all_met,
+        "captcha_required": captcha_required,
         "conditions": conditions,
         "participants_count": await service.get_participants_count(contest_id)
     }
@@ -497,6 +593,14 @@ async def register_participant(
     
     if contest.status.value != "active":
         raise HTTPException(status_code=400, detail=translate(language, "contest_not_active"))
+
+    if getattr(contest, "require_captcha", False):
+        captcha_token = (data or {}).get("captcha_token")
+        captcha_answer = (data or {}).get("captcha_answer")
+        if not captcha_token or captcha_answer is None:
+            raise HTTPException(status_code=400, detail=translate(language, "captcha_required"))
+        if not verify_captcha_token(str(captcha_token), str(captcha_answer), contest_id, user_id):
+            raise HTTPException(status_code=400, detail=translate(language, "captcha_invalid"))
     
     # Проверяем подписки на Telegram каналы
     channel_ids = [contest.channel_id]

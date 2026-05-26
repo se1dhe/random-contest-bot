@@ -129,6 +129,7 @@ class ContestCreate(BaseModel):
     require_instagram_follow: bool = False  # Требовать фолловинг на Instagram
     instagram_follow_days_required: int = 0
     instagram_channel_id: Optional[str] = None
+    require_captcha: bool = False
     message_thread_id: Optional[int] = None
 
 
@@ -733,6 +734,7 @@ async def get_contests(
             "require_instagram_follow": bool(contest.instagram_channel_id),
             "instagram_follow_days_required": contest.instagram_follow_days_required,
             "instagram_channel_id": contest.instagram_channel_id,
+            "require_captcha": bool(getattr(contest, "require_captcha", False)),
             "prizes": [
                 {
                     "id": p.id,
@@ -775,6 +777,7 @@ async def create_contest(
     require_instagram_follow: bool = Form(False),
     instagram_follow_days_required: int = Form(0),
     instagram_channel_id: Optional[str] = Form(None),
+    require_captcha: bool = Form(False),
     message_thread_id: Optional[int] = Form(None),
     post_to_sponsors: bool = Form(False),
     image: Optional[UploadFile] = File(None),
@@ -999,6 +1002,7 @@ async def create_contest(
         tiktok_follow_days_required=tiktok_follow_days_required if require_tiktok_follow else 0,
         instagram_channel_id=final_instagram_channel_id,
         instagram_follow_days_required=instagram_follow_days_required if require_instagram_follow else 0,
+        require_captcha=require_captcha,
         image_path=image_path,
         post_to_sponsors=post_to_sponsors
     )
@@ -1042,6 +1046,7 @@ async def create_contest(
             "require_youtube_subscription": require_youtube_subscription,
             "require_tiktok_follow": require_tiktok_follow,
             "require_instagram_follow": require_instagram_follow,
+            "require_captcha": require_captcha,
         }
     )
     await db.commit()
@@ -1106,6 +1111,7 @@ async def duplicate_contest(
         tiktok_follow_days_required=source.tiktok_follow_days_required,
         instagram_channel_id=source.instagram_channel_id,
         instagram_follow_days_required=source.instagram_follow_days_required,
+        require_captcha=bool(getattr(source, "require_captcha", False)),
         image_path=source.image_path,
         post_to_sponsors=source.post_to_sponsors,
         publish_at=None,

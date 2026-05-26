@@ -44,6 +44,7 @@ class Contest(BaseModel):
     tiktok_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга TikTok
     instagram_channel_id = Column(String(255), nullable=True)  # Username/ID Instagram аккаунта для обязательного фолловинга
     instagram_follow_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней фолловинга Instagram
+    require_captcha = Column(Boolean, default=False, nullable=False)  # Требовать простую капчу при регистрации
     image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
     post_to_sponsors = Column(Boolean, default=False, nullable=False)
     publish_at = Column(DateTime, nullable=True)  # Отложенная публикация конкурса
