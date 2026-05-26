@@ -159,10 +159,14 @@ async def root():
 @app.get("/{rest_of_path:path}")
 async def catch_all(rest_of_path: str):
     """Catch-all роут для SPA роутинга"""
-    # Если это не запрос к API и не к статике, отдаем index.html
-    if rest_of_path.startswith("api/") or rest_of_path.startswith("uploads/"):
+    if rest_of_path.startswith(("api/", "uploads/", "assets/")):
         return HTMLResponse("Not Found", status_code=404)
-        
+
+    allowed_spa_paths = {"admin", "register"}
+    allowed_spa_prefixes = ("results/",)
+    if rest_of_path not in allowed_spa_paths and not rest_of_path.startswith(allowed_spa_prefixes):
+        return HTMLResponse("Not Found", status_code=404)
+
     index_path = os.path.join(dist_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)

@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,54 @@ from database.models import (
 
 
 DEFAULT_PLANS = {
+    "contest_starter": {
+        "title": "TelOnyx Contest Starter",
+        "description": "30 дней для небольших конкурсов и одного Telegram канала",
+        "duration_days": 30,
+        "stars": int(os.getenv("SUBSCRIPTION_STARTER_STARS_PRICE", "149")),
+        "fiat_cents": int(os.getenv("SUBSCRIPTION_STARTER_FIAT_CENTS", "300")),
+        "limits": {
+            "max_channels": int(os.getenv("SUBSCRIPTION_STARTER_MAX_CHANNELS", "1")),
+            "max_active_contests": int(os.getenv("SUBSCRIPTION_STARTER_MAX_ACTIVE_CONTESTS", "3")),
+            "max_draft_contests": int(os.getenv("SUBSCRIPTION_STARTER_MAX_DRAFT_CONTESTS", "10")),
+            "max_external_channels_per_platform": int(os.getenv("SUBSCRIPTION_STARTER_MAX_EXTERNAL_CHANNELS", "3")),
+            "max_sponsors_per_contest": int(os.getenv("SUBSCRIPTION_STARTER_MAX_SPONSORS", "5")),
+            "max_prizes_per_contest": int(os.getenv("SUBSCRIPTION_STARTER_MAX_PRIZES", "10")),
+            "max_image_mb": int(os.getenv("SUBSCRIPTION_STARTER_MAX_IMAGE_MB", "3")),
+        },
+    },
+    "contest_pro": {
+        "title": "TelOnyx Contest Pro",
+        "description": "30 дней для регулярных конкурсов и нескольких каналов",
+        "duration_days": 30,
+        "stars": int(os.getenv("SUBSCRIPTION_PRO_STARS_PRICE", os.getenv("SUBSCRIPTION_STARS_PRICE", "299"))),
+        "fiat_cents": int(os.getenv("SUBSCRIPTION_PRO_FIAT_CENTS", os.getenv("SUBSCRIPTION_FIAT_CENTS", "500"))),
+        "limits": {
+            "max_channels": int(os.getenv("SUBSCRIPTION_PRO_MAX_CHANNELS", os.getenv("SUBSCRIPTION_MAX_CHANNELS", "5"))),
+            "max_active_contests": int(os.getenv("SUBSCRIPTION_PRO_MAX_ACTIVE_CONTESTS", os.getenv("SUBSCRIPTION_MAX_ACTIVE_CONTESTS", "10"))),
+            "max_draft_contests": int(os.getenv("SUBSCRIPTION_PRO_MAX_DRAFT_CONTESTS", os.getenv("SUBSCRIPTION_MAX_DRAFT_CONTESTS", "50"))),
+            "max_external_channels_per_platform": int(os.getenv("SUBSCRIPTION_PRO_MAX_EXTERNAL_CHANNELS", os.getenv("SUBSCRIPTION_MAX_EXTERNAL_CHANNELS", "10"))),
+            "max_sponsors_per_contest": int(os.getenv("SUBSCRIPTION_PRO_MAX_SPONSORS", os.getenv("SUBSCRIPTION_MAX_SPONSORS", "10"))),
+            "max_prizes_per_contest": int(os.getenv("SUBSCRIPTION_PRO_MAX_PRIZES", os.getenv("SUBSCRIPTION_MAX_PRIZES", "20"))),
+            "max_image_mb": int(os.getenv("SUBSCRIPTION_PRO_MAX_IMAGE_MB", os.getenv("SUBSCRIPTION_MAX_IMAGE_MB", "5"))),
+        },
+    },
+    "contest_business": {
+        "title": "TelOnyx Contest Business",
+        "description": "30 дней для агентств, сеток каналов и плотного расписания",
+        "duration_days": 30,
+        "stars": int(os.getenv("SUBSCRIPTION_BUSINESS_STARS_PRICE", "899")),
+        "fiat_cents": int(os.getenv("SUBSCRIPTION_BUSINESS_FIAT_CENTS", "1500")),
+        "limits": {
+            "max_channels": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_CHANNELS", "20")),
+            "max_active_contests": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_ACTIVE_CONTESTS", "50")),
+            "max_draft_contests": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_DRAFT_CONTESTS", "200")),
+            "max_external_channels_per_platform": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_EXTERNAL_CHANNELS", "50")),
+            "max_sponsors_per_contest": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_SPONSORS", "30")),
+            "max_prizes_per_contest": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_PRIZES", "50")),
+            "max_image_mb": int(os.getenv("SUBSCRIPTION_BUSINESS_MAX_IMAGE_MB", "10")),
+        },
+    },
     "contest_month": {
         "title": "TelOnyx Contest Pro",
         "description": "30 дней доступа к созданию и управлению конкурсами",
@@ -43,8 +92,44 @@ DEFAULT_PLANS = {
 }
 
 
+PLAN_ALIASES = {
+    "starter": "contest_starter",
+    "pro": "contest_pro",
+    "business": "contest_business",
+    "month": "contest_pro",
+    "contest_month": "contest_pro",
+}
+
+
+def normalize_plan_code(plan_code: str = "contest_pro") -> str:
+    value = (plan_code or "contest_pro").strip().lower()
+    return PLAN_ALIASES.get(value, value)
+
+
 def get_subscription_plan(plan_code: str = "contest_month") -> dict:
-    return DEFAULT_PLANS.get(plan_code, DEFAULT_PLANS["contest_month"])
+    normalized = normalize_plan_code(plan_code)
+    return DEFAULT_PLANS.get(normalized, DEFAULT_PLANS["contest_pro"])
+
+
+def get_subscription_plan_code(plan_code: str = "contest_pro") -> str:
+    normalized = normalize_plan_code(plan_code)
+    return normalized if normalized in DEFAULT_PLANS else "contest_pro"
+
+
+def list_subscription_plans() -> list[dict]:
+    items = []
+    for code in ("contest_starter", "contest_pro", "contest_business"):
+        plan = DEFAULT_PLANS[code]
+        items.append({
+            "code": code,
+            "title": plan["title"],
+            "description": plan["description"],
+            "duration_days": plan["duration_days"],
+            "telegram_stars": plan["stars"],
+            "fiat_cents": plan["fiat_cents"],
+            "limits": plan["limits"],
+        })
+    return items
 
 
 async def has_active_subscription(db: AsyncSession, user_id: int) -> bool:
@@ -105,7 +190,7 @@ async def get_owner_usage(db: AsyncSession, user_id: int) -> dict:
 
 async def get_subscription_status(db: AsyncSession, user_id: int) -> dict:
     subscription = await get_active_subscription(db, user_id)
-    plan_code = subscription.plan_code if subscription else "contest_month"
+    plan_code = get_subscription_plan_code(subscription.plan_code if subscription else "contest_pro")
     plan = get_subscription_plan(plan_code)
     usage = await get_owner_usage(db, user_id)
     return {
@@ -134,9 +219,10 @@ async def create_subscription_payment(
     db: AsyncSession,
     user_id: int,
     provider: str,
-    plan_code: str = "contest_month",
+    plan_code: str = "contest_pro",
     external_charge_id: Optional[str] = None,
 ) -> SubscriptionPayment:
+    plan_code = get_subscription_plan_code(plan_code)
     plan = get_subscription_plan(plan_code)
     payment = SubscriptionPayment(
         user_id=int(user_id),
@@ -157,9 +243,10 @@ async def activate_subscription(
     db: AsyncSession,
     user_id: int,
     provider: str,
-    plan_code: str = "contest_month",
+    plan_code: str = "contest_pro",
     external_charge_id: Optional[str] = None,
 ) -> OwnerSubscription:
+    plan_code = get_subscription_plan_code(plan_code)
     plan = get_subscription_plan(plan_code)
     now = datetime.utcnow()
     active_subscription = await get_active_subscription(db, user_id)
@@ -237,3 +324,70 @@ def build_paykassa_checkout_url(payment: SubscriptionPayment) -> Optional[str]:
         f"{base_url}{separator}"
         f"order_id={payment.external_charge_id}&amount={payment.amount / 100:.2f}&currency=USD"
     )
+
+
+def _paykassa_sci_configured() -> bool:
+    return bool(
+        os.getenv("PAYKASSA_SCI_ID", "").strip()
+        and os.getenv("PAYKASSA_SCI_KEY", "").strip()
+    )
+
+
+async def create_paykassa_checkout_url(payment: SubscriptionPayment) -> Optional[str]:
+    if not _paykassa_sci_configured():
+        return build_paykassa_checkout_url(payment)
+
+    api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.pro/sci/0.4/index.php").strip()
+    currency = (payment.currency or "USD").upper()
+    amount = f"{payment.amount / 100:.2f}"
+    payload = {
+        "func": "sci_create_order",
+        "sci_id": os.getenv("PAYKASSA_SCI_ID", "").strip(),
+        "sci_key": os.getenv("PAYKASSA_SCI_KEY", "").strip(),
+        "amount": amount,
+        "currency": currency,
+        "order_id": payment.external_charge_id,
+        "comment": f"TelOnyx Contest subscription {payment.plan_code}",
+        "paid_commission": os.getenv("PAYKASSA_PAID_COMMISSION", "shop"),
+        "system": os.getenv("PAYKASSA_SYSTEM", "").strip(),
+        "domain": os.getenv("PAYKASSA_DOMAIN", "").strip(),
+    }
+    payload = {key: value for key, value in payload.items() if value != ""}
+    if os.getenv("PAYKASSA_TEST", "").strip():
+        payload["test"] = os.getenv("PAYKASSA_TEST", "").strip()
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(api_url, data=payload)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        raise ValueError(str(data.get("message") or data.get("error")))
+    result = data.get("data") if isinstance(data.get("data"), dict) else data
+    checkout_url = (
+        result.get("url")
+        or result.get("invoice_url")
+        or result.get("checkout_url")
+        or result.get("payment_url")
+    )
+    return str(checkout_url) if checkout_url else None
+
+
+async def confirm_paykassa_private_hash(private_hash: str) -> Optional[dict]:
+    if not private_hash or not _paykassa_sci_configured():
+        return None
+
+    api_url = os.getenv("PAYKASSA_SCI_URL", "https://paykassa.pro/sci/0.4/index.php").strip()
+    payload = {
+        "func": "sci_confirm_order",
+        "sci_id": os.getenv("PAYKASSA_SCI_ID", "").strip(),
+        "sci_key": os.getenv("PAYKASSA_SCI_KEY", "").strip(),
+        "private_hash": private_hash,
+    }
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(api_url, data=payload)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        return None
+    result = data.get("data") if isinstance(data.get("data"), dict) else data
+    return result if isinstance(result, dict) else None

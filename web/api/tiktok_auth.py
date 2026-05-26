@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 STATE_EXPIRATION_SECONDS = 600
 PROVIDER = "tiktok"
 PROVIDER_LABEL = "TikTok"
+TIKTOK_STATUS_NOT_CONNECTED = "not_connected"
+TIKTOK_STATUS_VERIFIED = "verified"
+TIKTOK_STATUS_NOT_FOLLOWING = "not_following"
+TIKTOK_STATUS_UNVERIFIED = "unverified"
 
 
 @router.get("/status")
@@ -209,16 +213,37 @@ async def check_tiktok_subscription(
     db: Optional[AsyncSession] = None,
 ) -> bool:
     """Проверить фолловинг пользователя на TikTok."""
+    status = await get_tiktok_subscription_status(
+        user_id=user_id,
+        target_channel_id=target_channel_id,
+        days_required=days_required,
+        db=db,
+    )
+    return bool(status["met"])
+
+
+async def get_tiktok_subscription_status(
+    user_id: int,
+    target_channel_id: str,
+    days_required: int = 0,
+    db: Optional[AsyncSession] = None,
+) -> dict:
+    """Вернуть подробный статус проверки TikTok-фолловинга."""
     creds = await get_user_credentials(user_id, db)
     if not creds:
-        return False
+        return {"connected": False, "met": False, "status": TIKTOK_STATUS_NOT_CONNECTED}
     try:
-        return await check_tiktok_follow(
+        result = await check_tiktok_follow(
             access_token=creds.token,
             username=creds.tiktok_login or creds.tiktok_user_id,
             target_channel_id=target_channel_id,
             min_follow_days=days_required,
-        ) is True
+        )
+        if result is None:
+            return {"connected": True, "met": False, "status": TIKTOK_STATUS_UNVERIFIED}
+        if result:
+            return {"connected": True, "met": True, "status": TIKTOK_STATUS_VERIFIED}
+        return {"connected": True, "met": False, "status": TIKTOK_STATUS_NOT_FOLLOWING}
     except Exception as exc:
         logger.warning("Не удалось проверить TikTok фолловинг user_id=%s: %s", user_id, exc)
-        return False
+        return {"connected": True, "met": False, "status": TIKTOK_STATUS_UNVERIFIED}

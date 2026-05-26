@@ -14,9 +14,12 @@ from database.db import AsyncSessionLocal
 from database.models import SubscriptionPayment, SubscriptionPaymentStatus
 from shared.services.subscription_service import (
     activate_payment_by_external_id,
+    create_paykassa_checkout_url,
     create_subscription_payment,
     get_subscription_plan,
     get_subscription_status,
+    get_subscription_plan_code,
+    list_subscription_plans,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,23 +37,42 @@ def parse_subscription_payload(payload: str) -> tuple[str, str] | None:
     return parts[1], parts[2]
 
 
+def parse_plan_arg(message: Message) -> str:
+    parts = (message.text or "").split(maxsplit=1)
+    return get_subscription_plan_code(parts[1] if len(parts) > 1 else "contest_pro")
+
+
+def format_plan_list() -> str:
+    lines = []
+    for plan in list_subscription_plans():
+        limits = plan["limits"]
+        code = plan["code"].replace("contest_", "")
+        lines.append(
+            f"<b>{code}</b>: {plan['telegram_stars']} ⭐ / ${plan['fiat_cents'] / 100:.2f}, "
+            f"каналов {limits['max_channels']}, активных конкурсов {limits['max_active_contests']}"
+        )
+    return "\n".join(lines)
+
+
 @router.message(Command("subscribe"))
 async def cmd_subscribe(message: Message):
     if not is_private_chat(message):
         return
 
-    plan = get_subscription_plan()
+    plan_code = parse_plan_arg(message)
+    plan = get_subscription_plan(plan_code)
     async with AsyncSessionLocal() as db:
         payment = await create_subscription_payment(
             db,
             user_id=message.from_user.id,
             provider="telegram_stars",
+            plan_code=plan_code,
         )
 
     await message.answer_invoice(
         title=plan["title"],
         description=plan["description"],
-        payload=f"subscription:{payment.external_charge_id}:contest_month",
+        payload=f"subscription:{payment.external_charge_id}:{plan_code}",
         provider_token="",
         currency="XTR",
         prices=[LabeledPrice(label=plan["title"], amount=plan["stars"])],
@@ -62,17 +84,24 @@ async def cmd_paykassa(message: Message):
     if not is_private_chat(message):
         return
 
-    from shared.services.subscription_service import build_paykassa_checkout_url
-
+    plan_code = parse_plan_arg(message)
     async with AsyncSessionLocal() as db:
         payment = await create_subscription_payment(
             db,
             user_id=message.from_user.id,
             provider="paykassa",
+            plan_code=plan_code,
         )
-    checkout_url = build_paykassa_checkout_url(payment)
+    try:
+        checkout_url = await create_paykassa_checkout_url(payment)
+    except Exception as exc:
+        logger.warning("PayKassa checkout failed for user_id=%s: %s", message.from_user.id, exc)
+        checkout_url = None
     if not checkout_url:
-        await message.answer("PayKassa сейчас не настроена. Используй оплату Telegram Stars: /subscribe")
+        await message.answer(
+            "PayKassa сейчас не настроена. Используй оплату Telegram Stars: /subscribe\n\n"
+            f"Планы:\n{format_plan_list()}"
+        )
         return
     await message.answer(
         "💳 Оплата подписки через PayKassa:\n"
@@ -108,6 +137,18 @@ async def cmd_subscription(message: Message):
         f"Активные конкурсы: {usage['active_contests']}/{limits['max_active_contests']}\n"
         f"Черновики: {usage['draft_contests']}/{limits['max_draft_contests']}\n"
         f"YouTube/TikTok/Instagram: до {limits['max_external_channels_per_platform']} на платформу"
+    )
+
+
+@router.message(Command("plans"))
+async def cmd_plans(message: Message):
+    if not is_private_chat(message):
+        return
+    await message.answer(
+        "Планы подписки:\n\n"
+        f"{format_plan_list()}\n\n"
+        "Оплата Stars: /subscribe pro\n"
+        "Оплата PayKassa: /paykassa pro"
     )
 
 

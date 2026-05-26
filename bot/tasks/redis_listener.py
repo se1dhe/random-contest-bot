@@ -234,6 +234,17 @@ async def repair_inconsistent_contests(bot: Bot, now_db) -> None:
             contest = await service.get_contest_by_id(contest_id)
             if not contest:
                 continue
+            prizes = list(contest.prizes or [])
+            participants_count = await service.get_participants_count(contest_id)
+            if participants_count < len(prizes):
+                logger.info(
+                    "Watchdog recovery: contest %s (%s) пропущен: участников %s меньше призов %s",
+                    contest_id,
+                    contest.title,
+                    participants_count,
+                    len(prizes),
+                )
+                continue
 
             logger.warning(
                 "Watchdog recovery: найден contest %s (%s) без назначенных победителей, запускаем draw",

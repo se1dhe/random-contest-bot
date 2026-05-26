@@ -6,7 +6,8 @@ import hmac
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,10 +15,11 @@ from database.db import get_db
 from shared.config import config
 from shared.services.subscription_service import (
     activate_payment_by_external_id,
-    build_paykassa_checkout_url,
+    confirm_paykassa_private_hash,
     create_subscription_payment,
-    get_subscription_plan,
+    create_paykassa_checkout_url,
     get_subscription_status,
+    list_subscription_plans,
 )
 from web.api.deps import verify_telegram_user
 
@@ -70,18 +72,7 @@ def verify_paykassa_signature(request: Request, payload: dict) -> None:
 
 @router.get("/plans")
 async def plans():
-    plan = get_subscription_plan()
-    return [
-        {
-            "code": "contest_month",
-            "title": plan["title"],
-            "description": plan["description"],
-            "duration_days": plan["duration_days"],
-            "telegram_stars": plan["stars"],
-            "fiat_cents": plan["fiat_cents"],
-            "limits": plan["limits"],
-        }
-    ]
+    return list_subscription_plans()
 
 
 @router.get("/status")
@@ -98,6 +89,7 @@ async def subscription_status(
 
 @router.post("/paykassa/create")
 async def create_paykassa_checkout(
+    plan_code: str = Query("contest_pro"),
     telegram_user_id: int = Depends(verify_telegram_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -105,10 +97,16 @@ async def create_paykassa_checkout(
         db,
         user_id=telegram_user_id,
         provider="paykassa",
+        plan_code=plan_code,
     )
-    checkout_url = build_paykassa_checkout_url(payment)
+    try:
+        checkout_url = await create_paykassa_checkout_url(payment)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"PayKassa недоступна: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=f"PayKassa отклонила счет: {exc}") from exc
     if not checkout_url:
-        raise HTTPException(status_code=503, detail="PAYKASSA_CHECKOUT_URL не настроен")
+        raise HTTPException(status_code=503, detail="PayKassa не настроена")
     return {
         "payment_id": payment.id,
         "external_charge_id": payment.external_charge_id,
@@ -125,18 +123,38 @@ async def paykassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
         form = await request.form()
         payload = dict(form)
 
-    external_charge_id = payload.get("order_id") or payload.get("external_charge_id")
+    private_hash = str(payload.get("private_hash") or "").strip()
+    confirmed_payload = None
+    if private_hash:
+        try:
+            confirmed_payload = await confirm_paykassa_private_hash(private_hash)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"PayKassa confirm failed: {exc}") from exc
+        if confirmed_payload:
+            payload.update(confirmed_payload)
+
+    external_charge_id = (
+        payload.get("order_id")
+        or payload.get("external_charge_id")
+        or payload.get("shop_order_id")
+        or payload.get("order")
+    )
     if not external_charge_id:
         raise HTTPException(status_code=400, detail="Missing order_id")
 
-    verify_paykassa_signature(request, payload)
+    if not confirmed_payload:
+        verify_paykassa_signature(request, payload)
 
     status = str(payload.get("status") or payload.get("payment_status") or "").strip().lower()
     if status and status not in PAYKASSA_SUCCESS_STATUSES:
         raise HTTPException(status_code=400, detail="Payment is not successful")
 
-    expected_amount = normalize_paykassa_amount(payload.get("amount"))
-    expected_currency = str(payload.get("currency") or "USD").upper()
+    expected_amount = normalize_paykassa_amount(
+        payload.get("amount_shop")
+        or payload.get("amount")
+        or payload.get("amount_pay")
+    )
+    expected_currency = str(payload.get("currency") or payload.get("currency_shop") or "USD").upper()
 
     subscription = await activate_payment_by_external_id(
         db,

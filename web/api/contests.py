@@ -408,22 +408,20 @@ async def auto_check(
 
     tiktok_condition = None
     if contest.tiktok_channel_id:
-        from web.api.tiktok_auth import check_tiktok_subscription, get_user_credentials as get_tiktok_credentials
-        tiktok_credentials = await get_tiktok_credentials(user_id, db)
-        tiktok_met = False
-        if tiktok_credentials:
-            tiktok_met = await check_tiktok_subscription(
-                user_id=user_id,
-                target_channel_id=contest.tiktok_channel_id,
-                days_required=contest.tiktok_follow_days_required,
-                db=db,
-            )
+        from web.api.tiktok_auth import get_tiktok_subscription_status
+        tiktok_status = await get_tiktok_subscription_status(
+            user_id=user_id,
+            target_channel_id=contest.tiktok_channel_id,
+            days_required=contest.tiktok_follow_days_required,
+            db=db,
+        )
         tiktok_condition = {
             "type": "tiktok",
             "id": contest.tiktok_channel_id,
             "title": translate(contest.language, "tiktok_channel"),
-            "met": tiktok_met,
-            "connected": tiktok_credentials is not None,
+            "met": tiktok_status["met"],
+            "connected": tiktok_status["connected"],
+            "verification_status": tiktok_status["status"],
         }
         conditions.append(tiktok_condition)
 
@@ -592,22 +590,27 @@ async def register_participant(
     
     # Проверяем фолловинг TikTok, если требуется
     if contest.tiktok_channel_id:
-        from web.api.tiktok_auth import check_tiktok_subscription, get_user_credentials as get_tiktok_credentials
+        from web.api.tiktok_auth import TIKTOK_STATUS_UNVERIFIED, get_tiktok_subscription_status
 
-        tiktok_credentials = await get_tiktok_credentials(user_id, db)
-        if not tiktok_credentials:
-            raise HTTPException(
-                status_code=400,
-                detail=translate(language, "tiktok_auth_required")
-            )
-
-        is_following_tiktok = await check_tiktok_subscription(
+        tiktok_status = await get_tiktok_subscription_status(
             user_id=user_id,
             target_channel_id=contest.tiktok_channel_id,
             days_required=contest.tiktok_follow_days_required,
             db=db,
         )
+        if not tiktok_status["connected"]:
+            raise HTTPException(
+                status_code=400,
+                detail=translate(language, "tiktok_auth_required")
+            )
+
+        is_following_tiktok = tiktok_status["met"]
         if not is_following_tiktok:
+            if tiktok_status["status"] == TIKTOK_STATUS_UNVERIFIED:
+                raise HTTPException(
+                    status_code=400,
+                    detail=translate(language, "tiktok_follow_unverified")
+                )
             if contest.tiktok_follow_days_required > 0:
                 raise HTTPException(
                     status_code=400,
