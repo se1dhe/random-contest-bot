@@ -1,6 +1,6 @@
 """Remove unused social platform integration
 
-Revision ID: 021_remove_unused_social_platform
+Revision ID: 021_remove_social
 Revises: 020_prize_winner_user_id_bigint
 Create Date: 2026-05-26
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "021_remove_unused_social_platform"
+revision = "021_remove_social"
 down_revision = "020_prize_winner_user_id_bigint"
 branch_labels = None
 depends_on = None
