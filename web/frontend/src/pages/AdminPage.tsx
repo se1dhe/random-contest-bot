@@ -56,7 +56,7 @@ type AdminTab = 'dash' | 'contests' | 'archive' | 'journal' | 'channels';
 const ADMIN_PREFERENCES_STORAGE_KEY = 'admin_page_preferences_v1';
 
 export const AdminPage: React.FC = () => {
-    const { initData, hapticFeedback } = useTelegram();
+    const { initData, hapticFeedback, openLink, openTelegramLink } = useTelegram();
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<AdminTab>('dash');
     const [isCreating, setIsCreating] = useState(false);
@@ -187,6 +187,7 @@ export const AdminPage: React.FC = () => {
     }
     interface SubscriptionStatus {
         active: boolean;
+        is_super_admin?: boolean;
         subscription?: {
             ends_at?: string | null;
             provider?: string;
@@ -241,6 +242,7 @@ export const AdminPage: React.FC = () => {
     const [actionSearch, setActionSearch] = useState('');
     const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel' | 'instagram_channel'>('all');
     const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
+    const [paymentLoading, setPaymentLoading] = useState<'paykassa' | 'stars' | null>(null);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const contestPageSize = 20;
@@ -724,6 +726,40 @@ export const AdminPage: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
         setIsSettingsOpen(false);
         hapticFeedback('heavy');
+    };
+
+    const handlePaykassaCheckout = async () => {
+        if (!initData) return;
+        setPaymentLoading('paykassa');
+        setError(null);
+        setSuccessMessage(null);
+        hapticFeedback('medium');
+        try {
+            const res = await axios.post('/api/billing/paykassa/create', null, {
+                headers: { '_auth': initData },
+                params: { _auth: initData, plan_code: 'contest_pro' }
+            });
+            const checkoutUrl = res.data?.checkout_url;
+            if (!checkoutUrl) {
+                throw new Error('PayKassa не вернула ссылку на оплату');
+            }
+            openLink(checkoutUrl, { try_browser: 'chrome' });
+            setSuccessMessage('Ссылка PayKassa открыта. После оплаты статус обновится автоматически.');
+        } catch (err) {
+            setError(extractErrorMessage(err, 'Не удалось создать счет PayKassa'));
+            hapticFeedback('rigid');
+        } finally {
+            setPaymentLoading(null);
+        }
+    };
+
+    const handleStarsSubscribe = () => {
+        setPaymentLoading('stars');
+        setError(null);
+        setSuccessMessage('Для теста Telegram Stars отправь боту команду /subscribe pro');
+        hapticFeedback('light');
+        openTelegramLink('https://t.me/telonyx_contest_bot');
+        window.setTimeout(() => setPaymentLoading(null), 600);
     };
 
     const handleOpenContestById = (contestId: number) => {
@@ -1862,7 +1898,9 @@ export const AdminPage: React.FC = () => {
                                                     <div className="text-[11px] text-white/40">
                                                         {subscriptionStatus.subscription?.ends_at
                                                             ? `Активна до ${new Date(subscriptionStatus.subscription.ends_at).toLocaleDateString()}`
-                                                            : 'Активная подписка не найдена'}
+                                                            : subscriptionStatus.is_super_admin
+                                                                ? 'Админ-доступ без оплаченной подписки'
+                                                                : 'Активная подписка не найдена'}
                                                     </div>
                                                 </div>
                                                 <div className={cn(
@@ -1871,9 +1909,40 @@ export const AdminPage: React.FC = () => {
                                                         ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
                                                         : 'bg-red-500/10 text-red-300 border border-red-500/20'
                                                 )}>
-                                                    {subscriptionStatus.active ? 'Active' : 'Paused'}
+                                                    {subscriptionStatus.is_super_admin && !subscriptionStatus.subscription ? 'Admin' : subscriptionStatus.active ? 'Active' : 'Paused'}
                                                 </div>
                                             </div>
+                                            {!subscriptionStatus.subscription && (
+                                                <div className="rounded-2xl border border-white/5 bg-white/[0.025] p-3 space-y-3">
+                                                    <div>
+                                                        <div className="text-xs font-bold text-white/80">Тест оплаты подписки</div>
+                                                        <div className="mt-1 text-[11px] leading-relaxed text-white/40">
+                                                            PayKassa откроет счет прямо из мини-аппа. Telegram Stars тестируются через инвойс в личке бота.
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            onClick={handlePaykassaCheckout}
+                                                            isLoading={paymentLoading === 'paykassa'}
+                                                            disabled={paymentLoading !== null}
+                                                            className="w-full"
+                                                        >
+                                                            Купить через PayKassa
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="secondary"
+                                                            onClick={handleStarsSubscribe}
+                                                            isLoading={paymentLoading === 'stars'}
+                                                            disabled={paymentLoading !== null}
+                                                            className="w-full"
+                                                        >
+                                                            Telegram Stars
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                 {[
                                                     ['Каналы', subscriptionStatus.usage.channels, subscriptionStatus.plan.limits.max_channels],
