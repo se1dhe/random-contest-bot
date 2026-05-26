@@ -3,6 +3,7 @@ API оплаты подписки владельца.
 """
 import hashlib
 import hmac
+import logging
 import os
 from typing import Optional
 
@@ -24,9 +25,42 @@ from shared.services.subscription_service import (
 from web.api.deps import verify_telegram_user
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
+logger = logging.getLogger(__name__)
 
 
 PAYKASSA_SUCCESS_STATUSES = {"success", "paid", "completed", "confirmed", "yes", "1", "true"}
+
+
+def get_admin_webapp_url() -> str:
+    return (os.getenv("WEBAPP_URL") or config.webapp_url).rstrip("/") + "/admin"
+
+
+async def notify_subscription_activated(user_id: int) -> None:
+    token = config.bot_token
+    if not token:
+        return
+
+    payload = {
+        "chat_id": int(user_id),
+        "text": (
+            "✅ <b>Подписка активирована</b>\n\n"
+            "Оплата PayKassa подтверждена. Теперь доступна панель владельца для управления конкурсами."
+        ),
+        "parse_mode": "HTML",
+        "reply_markup": {
+            "inline_keyboard": [[{
+                "text": "Открыть админ-панель",
+                "web_app": {"url": get_admin_webapp_url()},
+            }]]
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload)
+        if response.status_code >= 400:
+            logger.warning("Telegram activation notification failed: %s %s", response.status_code, response.text[:500])
+    except httpx.HTTPError as exc:
+        logger.warning("Telegram activation notification failed: %s", exc)
 
 
 def normalize_paykassa_amount(value) -> Optional[int]:
@@ -165,4 +199,5 @@ async def paykassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
     )
     if not subscription:
         raise HTTPException(status_code=404, detail="Payment not found")
+    await notify_subscription_activated(subscription.user_id)
     return PlainTextResponse(f"{external_charge_id}|success")
