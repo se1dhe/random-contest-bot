@@ -8,6 +8,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.filters.command import CommandObject
 from shared.config import config
 from shared.i18n import normalize_language, translate
+from bot.handlers.billing import build_subscription_menu_keyboard, subscription_menu_text
 import os
 
 logger = logging.getLogger(__name__)
@@ -124,23 +125,15 @@ async def cmd_start(message: Message, command: CommandObject):
     try:
         if await has_owner_access(message.from_user.id):
             logger.info(f"Обработка /start для владельца {message.from_user.id}")
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="🔧 Открыть админ-панель",
-                    web_app={"url": get_admin_webapp_url()}
-                )]
-            ])
             await message.answer(
-                "👋 Привет!\n\n"
-                "Используй панель владельца для управления конкурсами.",
-                reply_markup=keyboard
+                subscription_menu_text(is_owner=True),
+                reply_markup=build_subscription_menu_keyboard(include_admin=True)
             )
         else:
             logger.info(f"Обработка /start для обычного пользователя {message.from_user.id}")
             await message.answer(
-                "👋 Привет!\n\n"
-                "Чтобы проводить конкурсы в своих каналах, оформи подписку: /subscribe или /paykassa.\n"
-                "Для участия в чужом конкурсе нажми кнопку регистрации в канале."
+                subscription_menu_text(is_owner=False),
+                reply_markup=build_subscription_menu_keyboard(include_admin=False)
             )
         logger.info(f"Ответ на /start успешно отправлен пользователю {message.from_user.id}")
     except Exception as e:
