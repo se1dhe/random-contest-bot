@@ -47,7 +47,7 @@ body {
     line-height: 1.6;
 }
 main {
-    max-width: 820px;
+    max-width: 860px;
     margin: 0 auto;
     padding: 48px 20px 72px;
 }
@@ -55,7 +55,15 @@ a { color: #66b7ff; }
 h1 { font-size: 34px; line-height: 1.15; margin: 0 0 16px; }
 h2 { font-size: 20px; margin-top: 34px; }
 p, li { color: #c8d4df; }
+strong { color: #eef4fb; }
 .muted { color: #8fa1b2; }
+.card {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 32, 0.72);
+    border-radius: 18px;
+    padding: 18px 20px;
+    margin: 22px 0;
+}
 """
 
 
@@ -100,24 +108,94 @@ async def privacy():
         "Privacy Policy - TelOnyx Contest Bot",
         """
 <h1>Privacy Policy</h1>
-<p class="muted">Last updated: April 29, 2026</p>
-<p>TelOnyx Contest Bot collects only the data needed to run Telegram contests and verify contest requirements.</p>
-<h2>Data We Collect</h2>
+<p class="muted">Last updated: May 27, 2026</p>
+<p>TelOnyx Contest Bot is a Telegram Mini App used to run Telegram contests and verify contest participation requirements, including Telegram membership and optional external service requirements such as YouTube channel subscription verification.</p>
+<p>This Privacy Policy explains what data we collect, how we use it, how we store and protect it, how we share it, and how users can request deletion of their data.</p>
+
+<div class="card">
+  <p><strong>Google API Services User Data Policy disclosure:</strong> TelOnyx Contest Bot's use and transfer of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+</div>
+
+<h2>1. Data We Collect</h2>
+<p>When a participant registers for a contest, TelOnyx Contest Bot may collect the following Telegram-related and contest-related data:</p>
 <ul>
-  <li>Telegram user ID, username, first name, and last name when a participant registers for a contest.</li>
-  <li>Contest registration records, participation status, and winner information.</li>
-  <li>OAuth tokens and account identifiers for connected services such as YouTube or TikTok when a contest requires external subscription verification.</li>
+  <li>Telegram user ID;</li>
+  <li>Telegram username;</li>
+  <li>Telegram first name and last name;</li>
+  <li>contest registration records;</li>
+  <li>contest participation status;</li>
+  <li>contest eligibility status;</li>
+  <li>winner information when applicable.</li>
 </ul>
-<h2>Google User Data</h2>
-<p>If a participant connects YouTube, the app requests read-only YouTube access only to verify the participant's channel identity and subscription status for the required contest channel. Google user data is not sold, shared for advertising, or used for unrelated purposes.</p>
-<h2>Data Sharing</h2>
-<p>Contest organizers may see participant registration records and winner information. We do not sell personal data.</p>
-<h2>Data Retention and Deletion</h2>
-<p>Contest records are retained as needed for contest administration. Users can request deletion of stored OAuth credentials and participation data by contacting the contest administrator.</p>
-<h2>Security</h2>
-<p>Access tokens and service credentials are stored on server-side infrastructure and are not exposed to participants in the Mini App.</p>
-<h2>Contact</h2>
-<p>For privacy requests or questions, contact the TelOnyx Contest Bot administrator through the Telegram bot or the organization that operates the contest.</p>
+<p>When a contest requires external service verification, the app may also collect account identifiers and OAuth credentials required to complete that verification.</p>
+
+<h2>2. Google User Data Accessed</h2>
+<p>If a participant chooses to connect their Google / YouTube account, TelOnyx Contest Bot requests the following Google OAuth scope:</p>
+<ul>
+  <li><code>https://www.googleapis.com/auth/youtube.readonly</code></li>
+</ul>
+<p>The app uses this read-only access only for contest requirement verification. Depending on the contest setup, the app may access the following Google / YouTube user data:</p>
+<ul>
+  <li>basic Google OAuth authentication result required to connect the account;</li>
+  <li>YouTube channel ID associated with the connected account;</li>
+  <li>YouTube channel title and public channel metadata returned by the YouTube Data API;</li>
+  <li>YouTube subscription list data needed to verify whether the participant is subscribed to the required contest channel;</li>
+  <li>OAuth access token, refresh token, token URI, token expiration time, client ID reference, and granted scopes required to perform and maintain the verification.</li>
+</ul>
+<p>TelOnyx Contest Bot does not request permission to upload, modify, delete, or manage YouTube videos, channels, comments, playlists, or other user content.</p>
+
+<h2>3. How Google User Data Is Used</h2>
+<p>Google user data is used only for the following purposes:</p>
+<ul>
+  <li>to authenticate the participant through Google OAuth;</li>
+  <li>to identify the participant's connected YouTube channel;</li>
+  <li>to verify whether the participant meets a contest requirement, such as being subscribed to a specific YouTube channel;</li>
+  <li>to update the participant's contest eligibility status inside TelOnyx Contest Bot;</li>
+  <li>to allow the participant to disconnect their YouTube account from the contest bot.</li>
+</ul>
+<p>Google user data is not used for advertising, analytics profiling, unrelated marketing, or any purpose unrelated to contest requirement verification.</p>
+<p>Google user data is not used to develop, improve, or train generalized artificial intelligence or machine learning models.</p>
+
+<h2>4. Data Sharing</h2>
+<p>TelOnyx Contest Bot does not sell Google user data.</p>
+<p>Google user data is not shared with advertisers, data brokers, or unrelated third parties.</p>
+<p>Contest organizers may see limited contest-related information, such as participant registration status, eligibility status, and winner information. Contest organizers do not receive OAuth access tokens or refresh tokens.</p>
+<p>Google user data may be processed by our hosting, database, logging, and infrastructure providers only as necessary to operate, secure, monitor, and maintain the application. These providers process data only for infrastructure and service operation purposes.</p>
+<p>We may disclose information if required by law, regulation, legal process, or to protect the security, integrity, and lawful operation of the service.</p>
+
+<h2>5. Data Storage and Protection</h2>
+<p>OAuth tokens, account identifiers, YouTube channel identifiers, and contest records are stored on server-side infrastructure.</p>
+<p>Access tokens, refresh tokens, client secrets, and service credentials are not exposed to participants in the Telegram Mini App.</p>
+<p>We use reasonable technical and organizational safeguards to protect user data, including:</p>
+<ul>
+  <li>HTTPS for data transmission;</li>
+  <li>server-side storage of OAuth credentials;</li>
+  <li>restricted access to production infrastructure;</li>
+  <li>environment-based secret management;</li>
+  <li>database access controls;</li>
+  <li>limiting access to user data to authorized administrators or backend services that require it to operate the contest.</li>
+</ul>
+
+<h2>6. Data Retention and Deletion</h2>
+<p>Contest participation records are retained only as long as necessary to administer the contest, resolve disputes, prevent fraud, maintain contest integrity, and comply with operational or legal requirements.</p>
+<p>OAuth tokens and connected Google / YouTube account data are retained only as long as needed to verify contest requirements or maintain the participant's contest eligibility status.</p>
+<p>Users may request deletion of their stored OAuth credentials, connected account data, and contest participation data by contacting the TelOnyx Contest Bot administrator.</p>
+<p>For privacy or deletion requests, contact: <a href="mailto:support@telonyx.app">support@telonyx.app</a></p>
+<p>After receiving a deletion request, we will delete or anonymize the user's stored data unless retention is required for legal, security, fraud prevention, or contest integrity reasons.</p>
+
+<h2>7. Revoking Google Access</h2>
+<p>Users can revoke TelOnyx Contest Bot's access to their Google account at any time through their Google Account permissions page:</p>
+<p><a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a></p>
+<p>After access is revoked, TelOnyx Contest Bot will no longer be able to verify YouTube subscription status for that user unless the user connects their Google account again.</p>
+
+<h2>8. Security</h2>
+<p>We take reasonable measures to protect user data from unauthorized access, disclosure, alteration, or destruction.</p>
+<p>However, no online service can guarantee absolute security. Users should contact us if they believe their data has been accessed or used without authorization.</p>
+
+<h2>9. Contact</h2>
+<p>For privacy requests, data deletion requests, or questions about this Privacy Policy, please contact:</p>
+<p><a href="mailto:support@telonyx.app">support@telonyx.app</a></p>
+<p>Users may also contact the contest administrator through the Telegram bot or the organization operating the contest.</p>
 <p><a href="/about">About</a> · <a href="/terms">Terms of Service</a></p>
 """
     )
