@@ -180,7 +180,7 @@ async def privacy():
 <p>Contest participation records are retained only as long as necessary to administer the contest, resolve disputes, prevent fraud, maintain contest integrity, and comply with operational or legal requirements.</p>
 <p>OAuth tokens and connected Google / YouTube account data are retained only as long as needed to verify contest requirements or maintain the participant's contest eligibility status.</p>
 <p>Users may request deletion of their stored OAuth credentials, connected account data, and contest participation data by contacting the TelOnyx Contest Bot administrator.</p>
-<p>For privacy or deletion requests, contact: <a href="mailto:support@telonyx.app">support@telonyx.app</a></p>
+<p>For privacy or deletion requests, contact: <a href="mailto:a0w.k1m@gmail.com">a0w.k1m@gmail.com</a></p>
 <p>After receiving a deletion request, we will delete or anonymize the user's stored data unless retention is required for legal, security, fraud prevention, or contest integrity reasons.</p>
 
 <h2>7. Revoking Google Access</h2>
@@ -194,7 +194,7 @@ async def privacy():
 
 <h2>9. Contact</h2>
 <p>For privacy requests, data deletion requests, or questions about this Privacy Policy, please contact:</p>
-<p><a href="mailto:support@telonyx.app">support@telonyx.app</a></p>
+<p><a href="mailto:a0w.k1m@gmail.com">a0w.k1m@gmail.com</a></p>
 <p>Users may also contact the contest administrator through the Telegram bot or the organization operating the contest.</p>
 <p><a href="/about">About</a> · <a href="/terms">Terms of Service</a></p>
 """
