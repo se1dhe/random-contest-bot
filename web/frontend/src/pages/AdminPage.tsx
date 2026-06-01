@@ -73,6 +73,7 @@ export const AdminPage: React.FC = () => {
         youtube_subscription_days_required?: number;
         require_tiktok_follow?: boolean;
         require_captcha?: boolean;
+        entry_fee_stars?: number;
     }
     interface CreatedContest {
         id: number;
@@ -1342,6 +1343,14 @@ export const AdminPage: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             <AlertCircle size={16} />
                                             <span className="text-[10px] font-bold uppercase tracking-wider">Требуется капча</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {(selectedContest.entry_fee_stars || 0) > 0 && (
+                                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-200">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm">⭐</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-wider">Вход {selectedContest.entry_fee_stars} Stars</span>
                                         </div>
                                     </div>
                                 )}

@@ -119,6 +119,7 @@ class ContestCreate(BaseModel):
     require_tiktok_follow: bool = False  # Требовать фолловинг на TikTok
     tiktok_channel_id: Optional[str] = None
     require_captcha: bool = False
+    entry_fee_stars: int = 0
     message_thread_id: Optional[int] = None
 
 
@@ -713,6 +714,7 @@ async def get_contests(
             "require_tiktok_follow": bool(contest.tiktok_channel_id),
             "tiktok_channel_id": contest.tiktok_channel_id,
             "require_captcha": bool(getattr(contest, "require_captcha", False)),
+            "entry_fee_stars": int(getattr(contest, "entry_fee_stars", 0) or 0),
             "prizes": [
                 {
                     "id": p.id,
@@ -752,6 +754,7 @@ async def create_contest(
     require_tiktok_follow: bool = Form(False),
     tiktok_channel_id: Optional[str] = Form(None),
     require_captcha: bool = Form(False),
+    entry_fee_stars: int = Form(0),
     message_thread_id: Optional[int] = Form(None),
     post_to_sponsors: bool = Form(False),
     image: Optional[UploadFile] = File(None),
@@ -781,6 +784,9 @@ async def create_contest(
     
     service = ContestService(db)
     contest_language = normalize_language(language)
+    entry_fee_stars = max(0, int(entry_fee_stars or 0))
+    if entry_fee_stars > 2500:
+        raise HTTPException(status_code=400, detail="Цена регистрации не может превышать 2500 Telegram Stars")
 
     # Парсим JSON строки
     try:
@@ -961,6 +967,7 @@ async def create_contest(
         youtube_subscription_days_required=youtube_subscription_days_required if require_youtube_subscription else 0,
         tiktok_channel_id=final_tiktok_channel_id,
         require_captcha=require_captcha,
+        entry_fee_stars=entry_fee_stars,
         image_path=image_path,
         post_to_sponsors=post_to_sponsors
     )
@@ -1004,6 +1011,7 @@ async def create_contest(
             "require_youtube_subscription": require_youtube_subscription,
             "require_tiktok_follow": require_tiktok_follow,
             "require_captcha": require_captcha,
+            "entry_fee_stars": entry_fee_stars,
         }
     )
     await db.commit()
@@ -1066,6 +1074,7 @@ async def duplicate_contest(
         youtube_subscription_days_required=source.youtube_subscription_days_required,
         tiktok_channel_id=source.tiktok_channel_id,
         require_captcha=bool(getattr(source, "require_captcha", False)),
+        entry_fee_stars=int(getattr(source, "entry_fee_stars", 0) or 0),
         image_path=source.image_path,
         post_to_sponsors=source.post_to_sponsors,
         publish_at=None,

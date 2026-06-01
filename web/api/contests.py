@@ -3,6 +3,7 @@ API роуты для конкурсов
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import Optional
 from datetime import datetime
 import base64
@@ -20,13 +21,84 @@ from bot.services.draw_service import DrawService
 from shared.services.telegram_service import TelegramService
 from shared.services.redis_service import get_cached_channel_invite_link, cache_channel_invite_link
 from aiogram import Bot
+from aiogram.types import LabeledPrice
 from shared.config import config
 from shared.i18n import day_unit, normalize_language, translate
 from web.api.deps import verify_telegram_user
+from database.models import ContestEntryPayment, ContestEntryPaymentStatus
 
 router = APIRouter(prefix="/api/contests", tags=["contests"])
 logger = logging.getLogger(__name__)
 CAPTCHA_TTL_SECONDS = 10 * 60
+
+
+def _extract_user_profile(init_data: Optional[str], fallback_username: Optional[str] = None) -> dict:
+    profile = {
+        "username": fallback_username,
+        "first_name": None,
+        "last_name": None,
+    }
+    if not init_data:
+        return profile
+    try:
+        from urllib.parse import parse_qs, unquote
+
+        parsed_auth = parse_qs(init_data)
+        if "user" not in parsed_auth:
+            return profile
+        user_data = json.loads(unquote(parsed_auth["user"][0]))
+        profile["username"] = fallback_username or user_data.get("username")
+        profile["first_name"] = user_data.get("first_name")
+        profile["last_name"] = user_data.get("last_name")
+    except Exception as exc:
+        logger.warning("Ошибка парсинга Telegram initData профиля: %s", exc)
+    return profile
+
+
+async def _create_entry_payment_invoice(
+    db: AsyncSession,
+    bot: Bot,
+    contest,
+    user_id: int,
+    username: Optional[str],
+    first_name: Optional[str],
+    last_name: Optional[str],
+) -> dict:
+    amount_stars = int(getattr(contest, "entry_fee_stars", 0) or 0)
+    if amount_stars <= 0:
+        raise ValueError("Contest entry payment is disabled")
+
+    payload = f"contest_entry:{contest.id}:{user_id}:{secrets.token_urlsafe(12)}"
+    payment = ContestEntryPayment(
+        contest_id=int(contest.id),
+        user_id=int(user_id),
+        amount_stars=amount_stars,
+        status=ContestEntryPaymentStatus.PENDING,
+        invoice_payload=payload,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+    )
+    db.add(payment)
+    await db.flush()
+
+    invoice_link = await bot.create_invoice_link(
+        title=f"Участие: {contest.title[:48]}",
+        description=f"Регистрация в конкурсе за {amount_stars} Telegram Stars.",
+        payload=payload,
+        provider_token="",
+        currency="XTR",
+        prices=[LabeledPrice(label="Регистрация в конкурсе", amount=amount_stars)],
+    )
+    payment.invoice_link = invoice_link
+    await db.commit()
+    await db.refresh(payment)
+    return {
+        "payment_required": True,
+        "payment_id": payment.id,
+        "amount_stars": amount_stars,
+        "invoice_link": invoice_link,
+    }
 
 
 def _captcha_secret() -> bytes:
@@ -213,6 +285,7 @@ async def get_contest(
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
         "tiktok_channel_id": contest.tiktok_channel_id,
         "require_captcha": bool(getattr(contest, "require_captcha", False)),
+        "entry_fee_stars": int(getattr(contest, "entry_fee_stars", 0) or 0),
     }
 
 
@@ -271,6 +344,7 @@ async def get_contest_info(
         "youtube_subscription_days_required": contest.youtube_subscription_days_required,
         "tiktok_channel_id": contest.tiktok_channel_id,
         "require_captcha": bool(getattr(contest, "require_captcha", False)),
+        "entry_fee_stars": int(getattr(contest, "entry_fee_stars", 0) or 0),
         "image_path": contest.image_path
     }
 
@@ -496,6 +570,7 @@ async def auto_check(
 
     all_met = all(c['met'] for c in conditions)
     captcha_required = bool(getattr(contest, "require_captcha", False))
+    entry_fee_stars = int(getattr(contest, "entry_fee_stars", 0) or 0)
     
     return {
         "status": "active",
@@ -503,6 +578,8 @@ async def auto_check(
         "can_register": all_met and not captcha_required,
         "external_conditions_met": all_met,
         "captcha_required": captcha_required,
+        "payment_required": entry_fee_stars > 0,
+        "entry_fee_stars": entry_fee_stars,
         "conditions": conditions,
         "participants_count": await service.get_participants_count(contest_id)
     }
@@ -550,6 +627,12 @@ async def register_participant(
     
     if contest.status.value != "active":
         raise HTTPException(status_code=400, detail=translate(language, "contest_not_active"))
+
+    participant_service = ParticipantService(db)
+    existing_participant = await participant_service.get_participant(contest_id, user_id)
+    if existing_participant:
+        logger.info("Повторная регистрация отклонена: contest_id=%s user_id=%s", contest_id, user_id)
+        raise HTTPException(status_code=400, detail=translate(language, "already_registered"))
 
     if getattr(contest, "require_captcha", False):
         captcha_token = (data or {}).get("captcha_token")
@@ -677,28 +760,32 @@ async def register_participant(
                 detail=translate(language, "tiktok_follow_required")
             )
 
-    # Извлекаем данные из initData если есть
-    first_name = None
-    last_name = None
-    
     auth_data = request.query_params.get("_auth") or request.headers.get("X-Telegram-Init-Data")
-    if auth_data:
-        try:
-            from urllib.parse import parse_qs, unquote
-            parsed_auth = parse_qs(auth_data)
-            if 'user' in parsed_auth:
-                import json
-                user_data = json.loads(unquote(parsed_auth['user'][0]))
-                first_name = user_data.get('first_name')
-                last_name = user_data.get('last_name')
-                # Если username не передан явно, берем из initData
-                if not username:
-                    username = user_data.get('username')
-        except Exception as e:
-            logger.warning("Ошибка парсинга initData при регистрации в contest_id=%s user_id=%s: %s", contest_id, user_id, e)
+    profile = _extract_user_profile(auth_data, fallback_username=username)
+    username = profile["username"]
+    first_name = profile["first_name"]
+    last_name = profile["last_name"]
+
+    entry_fee_stars = int(getattr(contest, "entry_fee_stars", 0) or 0)
+    if entry_fee_stars > 0:
+        payment_response = await _create_entry_payment_invoice(
+            db=db,
+            bot=telegram_service.bot,
+            contest=contest,
+            user_id=user_id,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+        )
+        logger.info(
+            "Создан Stars invoice для регистрации: contest_id=%s user_id=%s amount=%s",
+            contest_id,
+            user_id,
+            entry_fee_stars,
+        )
+        return payment_response
 
     # Регистрируем участника
-    participant_service = ParticipantService(db)
     participant = await participant_service.register_participant(
         contest_id=contest_id,
         user_id=user_id,

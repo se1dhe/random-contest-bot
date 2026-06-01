@@ -36,6 +36,7 @@ class ContestService:
         youtube_subscription_days_required: int = 0,
         tiktok_channel_id: Optional[str] = None,
         require_captcha: bool = False,
+        entry_fee_stars: int = 0,
         image_path: Optional[str] = None,
         post_to_sponsors: bool = False,
         publish_at: Optional[datetime] = None
@@ -68,6 +69,7 @@ class ContestService:
             youtube_subscription_days_required=youtube_subscription_days_required,
             tiktok_channel_id=tiktok_channel_id,
             require_captcha=bool(require_captcha),
+            entry_fee_stars=max(0, int(entry_fee_stars or 0)),
             image_path=image_path,
             status=ContestStatus.DRAFT,
             post_to_sponsors=post_to_sponsors,

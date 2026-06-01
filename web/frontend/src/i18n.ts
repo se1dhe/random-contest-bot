@@ -48,6 +48,9 @@ const messages: Record<ContestLanguage, Record<string, string>> = {
         captchaAnswer: 'Ответ',
         captchaInvalid: 'Неверный ответ капчи. Попробуйте ещё раз.',
         register: 'Зарегистрироваться',
+        paidEntryTitle: 'Платная регистрация',
+        paidEntryHint: 'После выполнения условий откроется счет Telegram Stars.',
+        paidEntryPending: 'Счет открыт. После оплаты регистрация завершится автоматически.',
     },
     uk: {
         loadingContest: 'Завантажуємо інформацію про конкурс...',
@@ -90,6 +93,9 @@ const messages: Record<ContestLanguage, Record<string, string>> = {
         captchaAnswer: 'Відповідь',
         captchaInvalid: 'Неправильна відповідь капчі. Спробуйте ще раз.',
         register: 'Зареєструватися',
+        paidEntryTitle: 'Платна реєстрація',
+        paidEntryHint: 'Після виконання умов відкриється рахунок Telegram Stars.',
+        paidEntryPending: 'Рахунок відкрито. Після оплати реєстрація завершиться автоматично.',
     },
     en: {
         loadingContest: 'Loading contest info...',
@@ -132,6 +138,9 @@ const messages: Record<ContestLanguage, Record<string, string>> = {
         captchaAnswer: 'Answer',
         captchaInvalid: 'Invalid captcha answer. Try again.',
         register: 'Register',
+        paidEntryTitle: 'Paid registration',
+        paidEntryHint: 'After completing the conditions, a Telegram Stars invoice will open.',
+        paidEntryPending: 'The invoice is open. Registration will finish automatically after payment.',
     },
 };
 

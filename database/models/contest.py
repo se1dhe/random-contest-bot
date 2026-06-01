@@ -42,6 +42,7 @@ class Contest(BaseModel):
     youtube_subscription_days_required = Column(Integer, default=0, nullable=False)  # Минимальное количество дней подписки
     tiktok_channel_id = Column(String(255), nullable=True)  # Username TikTok аккаунта для обязательного фолловинга
     require_captcha = Column(Boolean, default=False, nullable=False)  # Требовать простую капчу при регистрации
+    entry_fee_stars = Column(Integer, default=0, nullable=False)  # Цена регистрации в Telegram Stars, 0 = бесплатно
     image_path = Column(String(500), nullable=True)  # Путь к изображению конкурса
     post_to_sponsors = Column(Boolean, default=False, nullable=False)
     publish_at = Column(DateTime, nullable=True)  # Отложенная публикация конкурса

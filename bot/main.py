@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from shared.config import config
-from bot.handlers import admin, contest, forum_topics
+from bot.handlers import admin, contest, entry_payments, forum_topics
 from bot.tasks.redis_listener import redis_keyspace_listener, contest_schedule_watchdog
 from database.db import engine, AsyncSessionLocal
 from database.models import Base
@@ -37,6 +37,7 @@ async def main():
     dp.message.outer_middleware(forum_topics.ForumTopicRecorderMiddleware())
     
     # Регистрация роутеров
+    dp.include_router(entry_payments.router)
     dp.include_router(admin.router)
     dp.include_router(contest.router)
     dp.include_router(forum_topics.router)

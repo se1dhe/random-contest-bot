@@ -27,6 +27,7 @@ interface ContestInfo {
     prize_count: number;
     participants_count: number;
     require_captcha?: boolean;
+    entry_fee_stars?: number;
     prizes?: Array<{ id: number; place: number; title: string; description?: string | null }>;
 }
 
@@ -34,6 +35,8 @@ interface AutoCheckResponse {
     can_register: boolean;
     is_registered: boolean;
     captcha_required?: boolean;
+    payment_required?: boolean;
+    entry_fee_stars?: number;
     external_conditions_met?: boolean;
     conditions: Array<{
         type: 'telegram' | 'youtube' | 'tiktok';
@@ -78,6 +81,7 @@ export const RegistrationPage: React.FC = () => {
     const [isRegistering, setIsRegistering] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
     const [registerError, setRegisterError] = useState<string | null>(null);
+    const [paymentPending, setPaymentPending] = useState(false);
     const [liveParticipantsCount, setLiveParticipantsCount] = useState<number | null>(null);
     const [contestEnded, setContestEnded] = useState(false);
     const [winners, setWinners] = useState<Winner[]>([]);
@@ -179,14 +183,36 @@ export const RegistrationPage: React.FC = () => {
         }
     }, [pendingExternalAuth, pendingExternalCondition]);
 
+    const openInvoiceLink = React.useCallback((invoiceLink: string) => {
+        if (invoiceLink.startsWith('https://t.me/')) {
+            tg.openTelegramLink(invoiceLink);
+        } else {
+            tg.openLink(invoiceLink);
+        }
+    }, [tg]);
+
+    const handleRegisterResponse = React.useCallback((payload: { payment_required?: boolean; invoice_link?: string }) => {
+        if (payload?.payment_required && payload.invoice_link) {
+            setPaymentPending(true);
+            setRegisterError(null);
+            hapticFeedback('medium');
+            openInvoiceLink(payload.invoice_link);
+            return true;
+        }
+        return false;
+    }, [hapticFeedback, openInvoiceLink]);
+
     const handleRegister = React.useCallback(async () => {
         setIsRegistering(true);
         setRegisterError(null);
         try {
-            await axios.post(`/api/contests/${contestId}/register`, {}, {
+            const res = await axios.post(`/api/contests/${contestId}/register`, {}, {
                 headers: { 'X-Telegram-Init-Data': initData },
                 params: { _auth: initData, user_id: userId }
             });
+            if (handleRegisterResponse(res.data)) {
+                return;
+            }
             hapticFeedback('medium');
             refetchStatus();
         } catch (err) {
@@ -197,7 +223,7 @@ export const RegistrationPage: React.FC = () => {
         } finally {
             setIsRegistering(false);
         }
-    }, [contestId, initData, userId, hapticFeedback, refetchStatus, language]);
+    }, [contestId, initData, userId, handleRegisterResponse, hapticFeedback, refetchStatus, language]);
 
     const handleCaptchaRegister = React.useCallback(async () => {
         if (!captchaChallenge) {
@@ -207,13 +233,16 @@ export const RegistrationPage: React.FC = () => {
         setIsRegistering(true);
         setRegisterError(null);
         try {
-            await axios.post(`/api/contests/${contestId}/register`, {
+            const res = await axios.post(`/api/contests/${contestId}/register`, {
                 captcha_token: captchaChallenge.token,
                 captcha_answer: captchaAnswer,
             }, {
                 headers: { 'X-Telegram-Init-Data': initData },
                 params: { _auth: initData, user_id: userId }
             });
+            if (handleRegisterResponse(res.data)) {
+                return;
+            }
             hapticFeedback('medium');
             setCaptchaAnswer('');
             refetchStatus();
@@ -226,7 +255,7 @@ export const RegistrationPage: React.FC = () => {
         } finally {
             setIsRegistering(false);
         }
-    }, [captchaAnswer, captchaChallenge, contestId, hapticFeedback, initData, language, refetchCaptcha, refetchStatus, userId]);
+    }, [captchaAnswer, captchaChallenge, contestId, handleRegisterResponse, hapticFeedback, initData, language, refetchCaptcha, refetchStatus, userId]);
 
     const handleSuccess = React.useCallback(() => {
         setIsSuccess(true);
@@ -241,16 +270,17 @@ export const RegistrationPage: React.FC = () => {
 
     // Auto-registration logic
     useEffect(() => {
-        if (status?.can_register && !status?.captcha_required && !status?.is_registered && !isRegistering && !isSuccess) {
+        if (status?.can_register && !status?.captcha_required && !status?.is_registered && !isRegistering && !isSuccess && !paymentPending) {
             handleRegister();
         }
         if (status?.is_registered && !isSuccess) {
+            setPaymentPending(false);
             handleSuccess();
         }
         if (status?.participants_count !== undefined) {
             setLiveParticipantsCount(status.participants_count);
         }
-    }, [status, isRegistering, isSuccess, handleRegister, handleSuccess]);
+    }, [status, isRegistering, isSuccess, paymentPending, handleRegister, handleSuccess]);
 
     // WebSocket for live updates
     useEffect(() => {
@@ -818,6 +848,35 @@ export const RegistrationPage: React.FC = () => {
                                     <p className="p-4 text-center text-white/40 text-sm">{t(language, 'noConditions')}</p>
                                 )}
                             </GlassCard>
+                            {(contest.entry_fee_stars || status?.entry_fee_stars || 0) > 0 && !status?.is_registered && (
+                                <GlassCard className="p-4 border border-amber-500/20 bg-amber-500/5 space-y-2">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-bold text-white">{t(language, 'paidEntryTitle')}</div>
+                                            <div className="mt-1 text-xs text-white/50">
+                                                {paymentPending ? t(language, 'paidEntryPending') : t(language, 'paidEntryHint')}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-xl bg-amber-500/15 px-3 py-2 text-sm font-black text-amber-200">
+                                            {contest.entry_fee_stars || status?.entry_fee_stars} ⭐
+                                        </div>
+                                    </div>
+                                    {paymentPending && (
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            onClick={() => {
+                                                setPaymentPending(false);
+                                                refetchStatus();
+                                            }}
+                                            className="w-full"
+                                        >
+                                            <RefreshCw size={14} className="mr-2" />
+                                            {t(language, 'checkAgain')}
+                                        </Button>
+                                    )}
+                                </GlassCard>
+                            )}
                             {contest.require_captcha && status?.external_conditions_met && !status?.is_registered && (
                                 <GlassCard className="p-4 border border-cyan-500/20 bg-cyan-500/5 space-y-3">
                                     <div className="flex items-start gap-3">

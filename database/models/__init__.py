@@ -10,6 +10,7 @@ from .youtube_channel import YoutubeChannel
 from .tiktok_channel import TikTokChannel
 from .admin_action import AdminAction
 from .forum_topic import ForumTopic
+from .contest_entry_payment import ContestEntryPayment, ContestEntryPaymentStatus
 
 __all__ = [
     'Base',
@@ -24,5 +25,7 @@ __all__ = [
     'TikTokChannel',
     'AdminAction',
     'ForumTopic',
+    'ContestEntryPayment',
+    'ContestEntryPaymentStatus',
     'ContestStatus',
 ]

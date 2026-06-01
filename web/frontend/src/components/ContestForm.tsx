@@ -84,6 +84,8 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const [requireTikTok, setRequireTikTok] = useState(false);
     const [tiktokChannelId, setTikTokChannelId] = useState('');
     const [requireCaptcha, setRequireCaptcha] = useState(false);
+    const [paidEntryEnabled, setPaidEntryEnabled] = useState(false);
+    const [entryFeeStars, setEntryFeeStars] = useState(5);
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -108,6 +110,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const youtubeChannelMissing = requireYoutube && !youtubeChannelId.trim();
     const youtubeDaysInvalid = requireYoutube && youtubeDays < 0;
     const tiktokChannelMissing = requireTikTok && !tiktokChannelId.trim();
+    const entryFeeInvalid = paidEntryEnabled && (!Number.isInteger(entryFeeStars) || entryFeeStars < 1 || entryFeeStars > 2500);
     const manualThreadIdMissing = topicChoice === 'manual' && !manualThreadId.trim();
     const manualThreadIdInvalid =
         topicChoice === 'manual' &&
@@ -115,7 +118,8 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
     const hasStep3ValidationErrors =
         youtubeChannelMissing ||
         youtubeDaysInvalid ||
-        tiktokChannelMissing;
+        tiktokChannelMissing ||
+        entryFeeInvalid;
 
 
     // Queries
@@ -226,6 +230,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         formData.append('youtube_subscription_days_required', youtubeDays.toString());
         formData.append('require_tiktok_follow', requireTikTok.toString());
         formData.append('require_captcha', requireCaptcha.toString());
+        formData.append('entry_fee_stars', paidEntryEnabled ? entryFeeStars.toString() : '0');
         formData.append('prizes', JSON.stringify(prizes));
         formData.append('sponsors', JSON.stringify(sponsors));
         formData.append('post_to_sponsors', postToSponsors.toString());
@@ -718,6 +723,45 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                                             <motion.div animate={{ x: requireCaptcha ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
                                         </div>
                                     </div>
+                                </GlassCard>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="form-label">Оплата регистрации</label>
+                                <GlassCard className={`p-4 transition-all ${paidEntryEnabled ? 'border-amber-500/20 bg-amber-500/5' : ''}`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center space-x-3">
+                                            <div className={`p-2 rounded-lg ${paidEntryEnabled ? 'bg-amber-500/20 text-amber-300' : 'bg-white/10 text-white/40'}`}>
+                                                <span className="text-lg leading-none">⭐</span>
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold">Регистрация за Telegram Stars</div>
+                                                <div className="text-[10px] text-white/40">Участник оплатит вход после выполнения условий</div>
+                                            </div>
+                                        </div>
+                                        <div
+                                            className={`w-12 h-6 rounded-full p-1 cursor-pointer transition-colors ${paidEntryEnabled ? 'bg-amber-500' : 'bg-white/20'}`}
+                                            onClick={() => setPaidEntryEnabled(!paidEntryEnabled)}
+                                        >
+                                            <motion.div animate={{ x: paidEntryEnabled ? 24 : 0 }} className="w-4 h-4 bg-white rounded-full shadow-lg" />
+                                        </div>
+                                    </div>
+                                    {paidEntryEnabled && (
+                                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="pt-4 mt-4 border-t border-white/5 space-y-2">
+                                            <label className="form-label text-[10px]">Цена входа, Stars</label>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                max={2500}
+                                                className="form-input py-2 text-xs"
+                                                value={entryFeeStars}
+                                                onChange={e => setEntryFeeStars(parseInt(e.target.value) || 0)}
+                                            />
+                                            {entryFeeInvalid && (
+                                                <div className="text-[10px] text-red-300">Укажите целое число от 1 до 2500 Stars.</div>
+                                            )}
+                                        </motion.div>
+                                    )}
                                 </GlassCard>
                             </div>
                         </div>
