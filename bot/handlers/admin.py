@@ -8,7 +8,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.filters.command import CommandObject
 from shared.config import config
 from shared.i18n import normalize_language, translate
-from bot.handlers.billing import build_subscription_menu_keyboard, subscription_menu_text
 import os
 
 logger = logging.getLogger(__name__)
@@ -21,13 +20,16 @@ def is_private_chat(message: Message) -> bool:
 
 
 async def has_owner_access(user_id: int) -> bool:
-    if config.is_admin(user_id):
-        return True
-    from database.db import AsyncSessionLocal
-    from shared.services.subscription_service import has_active_subscription
+    return config.is_admin(user_id)
 
-    async with AsyncSessionLocal() as db:
-        return await has_active_subscription(db, user_id)
+
+def build_owner_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔧 Открыть админ-панель",
+            web_app={"url": get_admin_webapp_url()}
+        )]
+    ])
 
 
 def get_admin_webapp_url() -> str:
@@ -126,14 +128,15 @@ async def cmd_start(message: Message, command: CommandObject):
         if await has_owner_access(message.from_user.id):
             logger.info(f"Обработка /start для владельца {message.from_user.id}")
             await message.answer(
-                subscription_menu_text(is_owner=True),
-                reply_markup=build_subscription_menu_keyboard(include_admin=True)
+                "👋 <b>TelOnyx Contest Bot</b>\n\n"
+                "Этот экземпляр настроен для твоих каналов. Открой панель владельца, чтобы управлять конкурсами.",
+                reply_markup=build_owner_keyboard()
             )
         else:
             logger.info(f"Обработка /start для обычного пользователя {message.from_user.id}")
             await message.answer(
-                subscription_menu_text(is_owner=False),
-                reply_markup=build_subscription_menu_keyboard(include_admin=False)
+                "👋 <b>TelOnyx Contest Bot</b>\n\n"
+                "Для участия перейди в канал с конкурсом и нажми кнопку регистрации."
             )
         logger.info(f"Ответ на /start успешно отправлен пользователю {message.from_user.id}")
     except Exception as e:
@@ -155,20 +158,13 @@ async def cmd_admin(message: Message):
         return
 
     if not await has_owner_access(message.from_user.id):
-        await message.answer("❌ Для доступа к панели владельца нужна активная подписка. Оформи её командой /subscribe.")
+        await message.answer("❌ Доступ к панели владельца разрешен только администратору этого экземпляра бота.")
         return
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="🔧 Открыть админ-панель",
-            web_app={"url": get_admin_webapp_url()}
-        )]
-    ])
     
     await message.answer(
         "🔧 <b>Панель владельца</b>\n\n"
         "Нажми кнопку ниже, чтобы открыть управление конкурсами.",
-        reply_markup=keyboard
+        reply_markup=build_owner_keyboard()
     )
 
 
@@ -187,17 +183,12 @@ async def cmd_help(message: Message):
             "📋 <b>Команды владельца:</b>\n\n"
             "/start - Начать работу с ботом\n"
             "/admin - Открыть панель владельца\n"
-            "/subscription - Статус подписки и лимиты\n"
-            "/plans - Планы подписки\n"
-            "/subscribe - Купить подписку Telegram Stars\n"
-            "/paykassa - Купить подписку через PayKassa\n"
             "/help - Показать это сообщение\n\n"
             "Для управления конкурсами используй команду /admin."
         )
     else:
         help_text = (
             "📋 <b>Информация:</b>\n\n"
-            "Для проведения конкурсов оформи подписку: /subscribe или /paykassa\n"
             "Для участия перейди в канал с конкурсом и нажми кнопку регистрации."
         )
     

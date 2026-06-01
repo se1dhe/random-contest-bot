@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fast static regression checks for the SaaS guardrails.
+Fast static regression checks for self-hosted bot guardrails.
 
 This script intentionally uses only the Python standard library so it can run in
 minimal deploy/debug environments before full dependencies are installed.
@@ -23,9 +23,10 @@ def require(condition: bool, message: str) -> None:
 def main() -> int:
     contests = read("web/api/contests.py")
     publish = read("web/api/publish.py")
-    billing = read("web/api/billing.py")
     admin = read("web/api/admin.py")
-    bot_billing = read("bot/handlers/billing.py")
+    deps = read("web/api/deps.py")
+    bot_main = read("bot/main.py")
+    web_main = read("web/main.py")
     bot_contest = read("bot/handlers/contest.py")
     bot_forum_topics = read("bot/handlers/forum_topics.py")
 
@@ -44,14 +45,13 @@ def main() -> int:
 
     require("def require_owned_contest" in publish, "Publish API must keep contest ownership guard")
     require("require_owned_contest(contest, user_id)" in publish, "Publish endpoints must enforce contest ownership")
-    require("PAYKASSA_WEBHOOK_SECRET" in billing, "PayKassa webhook must keep optional signature guard")
-    require("expected_amount=expected_amount" in billing, "PayKassa webhook must validate payment amount")
-    require("expected_currency=expected_currency" in billing, "PayKassa webhook must validate payment currency")
+    require("config.is_admin(auth_user_id)" in deps, "Admin access must be limited to configured ADMIN_ID(S)")
+    require("has_active_subscription" not in deps, "Admin access must not depend on paid subscriptions")
+    require("billing.router" not in bot_main, "Bot must not expose subscription payment commands")
+    require("billing.router" not in web_main, "Web app must not expose billing API routes")
     require("async def delete_contest" in admin, "Admin API must expose contest deletion")
     require("require_owned(contest, admin_id" in admin, "Admin contest actions must enforce ownership")
-    require("activate_payment_by_external_id" in bot_billing, "Telegram Stars activation must be idempotent")
-    require("expected_amount=payment.total_amount" in bot_billing, "Telegram Stars activation must validate amount")
-    require("expected_currency=payment.currency" in bot_billing, "Telegram Stars activation must validate currency")
+    require("get_subscription_status" not in admin, "Admin API must not enforce paid subscription plans")
     require("build_public_media_url" in bot_contest, "Bot publication must support public media URL fallback")
     require("ForumTopicRecorderMiddleware" in bot_forum_topics, "Forum topics must be recorded silently before handlers")
     require('Command("topic")' not in bot_forum_topics, "Forum topic recording must not expose a public /topic command")

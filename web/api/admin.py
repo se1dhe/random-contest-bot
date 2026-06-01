@@ -34,7 +34,6 @@ from shared.services.redis_service import (
     acquire_lock,
     release_lock,
 )
-from shared.services.subscription_service import get_subscription_status
 from web.api.deps import verify_admin
 from bot.handlers.contest import (
     publish_contest_to_channel,
@@ -69,29 +68,23 @@ def require_owned(entity, user_id: int, detail: str = "Объект не най�
         raise HTTPException(status_code=404, detail=detail)
 
 
-async def get_owner_subscription_context(db: AsyncSession, user_id: int) -> dict:
-    if is_super_admin(user_id):
-        return {
-            "active": True,
-            "is_super_admin": True,
-            "usage": {},
-            "plan": {
-                "limits": {
-                    "max_channels": 10**9,
-                    "max_active_contests": 10**9,
-                    "max_draft_contests": 10**9,
-                    "max_external_channels_per_platform": 10**9,
-                    "max_sponsors_per_contest": 10**9,
-                    "max_prizes_per_contest": 10**9,
-                    "max_image_mb": 100,
-                }
-            },
-        }
-    status = await get_subscription_status(db, user_id)
-    if not status["active"]:
-        raise HTTPException(status_code=402, detail="Для управления конкурсами нужна активная подписка")
-    status["is_super_admin"] = False
-    return status
+async def get_owner_access_context(db: AsyncSession, user_id: int) -> dict:
+    return {
+        "active": True,
+        "is_super_admin": is_super_admin(user_id),
+        "usage": {},
+        "plan": {
+            "limits": {
+                "max_channels": 10**9,
+                "max_active_contests": 10**9,
+                "max_draft_contests": 10**9,
+                "max_external_channels_per_platform": 10**9,
+                "max_sponsors_per_contest": 10**9,
+                "max_prizes_per_contest": 10**9,
+                "max_image_mb": 100,
+            }
+        },
+    }
 
 
 async def enforce_owner_limit(
@@ -102,11 +95,11 @@ async def enforce_owner_limit(
     detail: str,
     increment: int = 1,
 ) -> dict:
-    context = await get_owner_subscription_context(db, user_id)
+    context = await get_owner_access_context(db, user_id)
     current = int(context.get("usage", {}).get(usage_key, 0))
     limit = int(context["plan"]["limits"][limit_key])
     if current + increment > limit:
-        raise HTTPException(status_code=402, detail=detail)
+        raise HTTPException(status_code=400, detail=detail)
     return context
 
 
@@ -447,7 +440,7 @@ async def create_channel(
                 admin_id,
                 usage_key="channels",
                 limit_key="max_channels",
-                detail="Достигнут лимит активных Telegram каналов по подписке",
+                detail="Достигнут лимит активных Telegram каналов",
             )
         existing.is_active = True
         existing.owner_user_id = int(admin_id)
@@ -478,7 +471,7 @@ async def create_channel(
         admin_id,
         usage_key="channels",
         limit_key="max_channels",
-        detail="Достигнут лимит активных Telegram каналов по подписке",
+        detail="Достигнут лимит активных Telegram каналов",
     )
 
     # Проверка прав бота в канале
@@ -801,18 +794,18 @@ async def create_contest(
         admin_id,
         usage_key="draft_contests",
         limit_key="max_draft_contests",
-        detail="Достигнут лимит черновиков конкурсов по подписке",
+        detail="Достигнут лимит черновиков конкурсов",
     )
     limits = subscription_context["plan"]["limits"]
     if len(prizes_data or []) > int(limits["max_prizes_per_contest"]):
         raise HTTPException(
-            status_code=402,
-            detail=f"В подписке доступно не более {limits['max_prizes_per_contest']} призов на конкурс",
+            status_code=400,
+            detail=f"Доступно не более {limits['max_prizes_per_contest']} призов на конкурс",
         )
     if len(sponsors_data or []) > int(limits["max_sponsors_per_contest"]):
         raise HTTPException(
-            status_code=402,
-            detail=f"В подписке доступно не более {limits['max_sponsors_per_contest']} спонсоров на конкурс",
+            status_code=400,
+            detail=f"Доступно не более {limits['max_sponsors_per_contest']} спонсоров на конкурс",
         )
 
     if sponsors_data:
@@ -854,8 +847,8 @@ async def create_contest(
                     except Exception:
                         logger.warning("Не удалось удалить превышающий лимит файл %s", file_path)
                     raise HTTPException(
-                        status_code=402,
-                        detail=f"Размер изображения превышает лимит подписки {limits['max_image_mb']} МБ",
+                        status_code=413,
+                        detail=f"Размер изображения превышает лимит {limits['max_image_mb']} МБ",
                     )
                 buffer.write(chunk)
 
@@ -1040,7 +1033,7 @@ async def duplicate_contest(
         admin_id,
         usage_key="draft_contests",
         limit_key="max_draft_contests",
-        detail="Достигнут лимит черновиков конкурсов по подписке",
+        detail="Достигнут лимит черновиков конкурсов",
     )
 
     duplicate_title = (data.title or f"{source.title} (копия)").strip()
@@ -1321,7 +1314,7 @@ async def repair_contest(
                     admin_id,
                     usage_key="active_contests",
                     limit_key="max_active_contests",
-                    detail="Достигнут лимит активных конкурсов по подписке",
+                    detail="Достигнут лимит активных конкурсов",
                 )
                 published = await publish_contest_to_channel(contest_id, bot, webapp_url)
                 if published:
@@ -1757,7 +1750,7 @@ async def bulk_publish_now(
     contest_service = ContestService(db)
     published_ids: list[int] = []
     skipped: list[dict] = []
-    active_limit_context = await get_owner_subscription_context(db, admin_id)
+    active_limit_context = await get_owner_access_context(db, admin_id)
     active_limit = int(active_limit_context["plan"]["limits"]["max_active_contests"])
     active_count = int(active_limit_context.get("usage", {}).get("active_contests", 0))
     try:
@@ -1976,7 +1969,7 @@ async def add_youtube_channel(
         admin_id,
         usage_key="youtube_channels",
         limit_key="max_external_channels_per_platform",
-        detail="Достигнут лимит YouTube каналов по подписке",
+        detail="Достигнут лимит YouTube каналов",
     )
     
     # Получаем информацию о канале через API
@@ -2120,7 +2113,7 @@ async def add_tiktok_channel(
         admin_id,
         usage_key="tiktok_channels",
         limit_key="max_external_channels_per_platform",
-        detail="Достигнут лимит TikTok аккаунтов по подписке",
+        detail="Достигнут лимит TikTok аккаунтов",
     )
 
     title = (data.title or f"@{channel_id}").strip()

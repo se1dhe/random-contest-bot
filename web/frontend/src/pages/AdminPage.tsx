@@ -55,7 +55,7 @@ type AdminTab = 'dash' | 'contests' | 'archive' | 'journal' | 'channels';
 const ADMIN_PREFERENCES_STORAGE_KEY = 'admin_page_preferences_v1';
 
 export const AdminPage: React.FC = () => {
-    const { initData, hapticFeedback, openLink, openTelegramLink } = useTelegram();
+    const { initData, hapticFeedback } = useTelegram();
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<AdminTab>('dash');
     const [isCreating, setIsCreating] = useState(false);
@@ -177,36 +177,6 @@ export const AdminPage: React.FC = () => {
             actionability: 'auto_repairable' | 'manual_attention';
         }>;
     }
-    interface SubscriptionStatus {
-        active: boolean;
-        is_super_admin?: boolean;
-        subscription?: {
-            ends_at?: string | null;
-            provider?: string;
-            plan_code?: string;
-        } | null;
-        plan: {
-            title: string;
-            telegram_stars: number;
-            fiat_cents: number;
-            limits: {
-                max_channels: number;
-                max_active_contests: number;
-                max_draft_contests: number;
-                max_external_channels_per_platform: number;
-                max_sponsors_per_contest: number;
-                max_prizes_per_contest: number;
-                max_image_mb: number;
-            };
-        };
-        usage: {
-            channels: number;
-            active_contests: number;
-            draft_contests: number;
-            youtube_channels: number;
-            tiktok_channels: number;
-        };
-    }
     interface PaginatedContestsResponse {
         items: AdminContest[];
         total: number;
@@ -233,8 +203,6 @@ export const AdminPage: React.FC = () => {
     const [actionSearch, setActionSearch] = useState('');
     const [actionFilter, setActionFilter] = useState<'all' | 'contest' | 'channel' | 'youtube_channel' | 'tiktok_channel'>('all');
     const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
-    const [paymentLoading, setPaymentLoading] = useState<'paykassa' | 'stars' | null>(null);
-
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const contestPageSize = 20;
 
@@ -431,7 +399,6 @@ export const AdminPage: React.FC = () => {
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics_growth', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
-        await queryClient.invalidateQueries({ queryKey: ['billing_status', initData] });
     };
 
     const { data: contests, isLoading: isContestsLoading, refetch: refetchContests } = useQuery<AdminContest[]>({
@@ -576,18 +543,6 @@ export const AdminPage: React.FC = () => {
         enabled: !!initData && activeTab === 'dash'
     });
 
-    const { data: subscriptionStatus, refetch: refetchSubscriptionStatus } = useQuery<SubscriptionStatus>({
-        queryKey: ['billing_status', initData],
-        queryFn: async () => {
-            const res = await axios.get('/api/billing/status', {
-                headers: { '_auth': initData },
-                params: { _auth: initData }
-            });
-            return res.data;
-        },
-        enabled: !!initData,
-    });
-
     const { data: recentActions } = useQuery<AdminHistoryItem[]>({
         queryKey: ['admin_recent_actions', initData],
         queryFn: async () => {
@@ -666,7 +621,6 @@ export const AdminPage: React.FC = () => {
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_analytics_growth', initData] });
         await queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
-        await queryClient.invalidateQueries({ queryKey: ['billing_status', initData] });
 
         const contestsResult = await queryClient.fetchQuery<AdminContest[]>({
             queryKey: ['admin_contests', initData],
@@ -698,44 +652,9 @@ export const AdminPage: React.FC = () => {
         refetchAnalytics();
         refetchGrowth();
         refetchHealth();
-        refetchSubscriptionStatus();
         queryClient.invalidateQueries({ queryKey: ['admin_recent_actions', initData] });
         setIsSettingsOpen(false);
         hapticFeedback('heavy');
-    };
-
-    const handlePaykassaCheckout = async () => {
-        if (!initData) return;
-        setPaymentLoading('paykassa');
-        setError(null);
-        setSuccessMessage(null);
-        hapticFeedback('medium');
-        try {
-            const res = await axios.post('/api/billing/paykassa/create', null, {
-                headers: { '_auth': initData },
-                params: { _auth: initData, plan_code: 'contest_pro' }
-            });
-            const checkoutUrl = res.data?.checkout_url;
-            if (!checkoutUrl) {
-                throw new Error('PayKassa не вернула ссылку на оплату');
-            }
-            openLink(checkoutUrl, { try_browser: 'chrome' });
-            setSuccessMessage('Ссылка PayKassa открыта. После оплаты статус обновится автоматически.');
-        } catch (err) {
-            setError(extractErrorMessage(err, 'Не удалось создать счет PayKassa'));
-            hapticFeedback('rigid');
-        } finally {
-            setPaymentLoading(null);
-        }
-    };
-
-    const handleStarsSubscribe = () => {
-        setPaymentLoading('stars');
-        setError(null);
-        setSuccessMessage('Для теста Telegram Stars отправь боту команду /subscribe pro');
-        hapticFeedback('light');
-        openTelegramLink('https://t.me/telonyx_contest_bot');
-        window.setTimeout(() => setPaymentLoading(null), 600);
     };
 
     const handleOpenContestById = (contestId: number) => {
@@ -1825,83 +1744,6 @@ export const AdminPage: React.FC = () => {
                                     exit={{ opacity: 0, y: -10 }}
                                     className="space-y-4"
                                 >
-                                    {subscriptionStatus && (
-                                        <GlassCard className="p-4 border-white/5 space-y-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Подписка</h3>
-                                                    <div className="mt-1 text-sm font-black text-white/90">{subscriptionStatus.plan.title}</div>
-                                                    <div className="text-[11px] text-white/40">
-                                                        {subscriptionStatus.subscription?.ends_at
-                                                            ? `Активна до ${new Date(subscriptionStatus.subscription.ends_at).toLocaleDateString()}`
-                                                            : subscriptionStatus.is_super_admin
-                                                                ? 'Админ-доступ без оплаченной подписки'
-                                                                : 'Активная подписка не найдена'}
-                                                    </div>
-                                                </div>
-                                                <div className={cn(
-                                                    'rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider',
-                                                    subscriptionStatus.active
-                                                        ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-                                                        : 'bg-red-500/10 text-red-300 border border-red-500/20'
-                                                )}>
-                                                    {subscriptionStatus.is_super_admin && !subscriptionStatus.subscription ? 'Admin' : subscriptionStatus.active ? 'Active' : 'Paused'}
-                                                </div>
-                                            </div>
-                                            {!subscriptionStatus.subscription && (
-                                                <div className="rounded-2xl border border-white/5 bg-white/[0.025] p-3 space-y-3">
-                                                    <div>
-                                                        <div className="text-xs font-bold text-white/80">Тест оплаты подписки</div>
-                                                        <div className="mt-1 text-[11px] leading-relaxed text-white/40">
-                                                            PayKassa откроет счет прямо из мини-аппа. Telegram Stars тестируются через инвойс в личке бота.
-                                                        </div>
-                                                    </div>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        <Button
-                                                            type="button"
-                                                            onClick={handlePaykassaCheckout}
-                                                            isLoading={paymentLoading === 'paykassa'}
-                                                            disabled={paymentLoading !== null}
-                                                            className="w-full"
-                                                        >
-                                                            Купить через PayKassa
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="secondary"
-                                                            onClick={handleStarsSubscribe}
-                                                            isLoading={paymentLoading === 'stars'}
-                                                            disabled={paymentLoading !== null}
-                                                            className="w-full"
-                                                        >
-                                                            Telegram Stars
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                {[
-                                                    ['Каналы', subscriptionStatus.usage.channels, subscriptionStatus.plan.limits.max_channels],
-                                                    ['Активные', subscriptionStatus.usage.active_contests, subscriptionStatus.plan.limits.max_active_contests],
-                                                    ['Черновики', subscriptionStatus.usage.draft_contests, subscriptionStatus.plan.limits.max_draft_contests],
-                                                    [
-                                                        'Соцсети',
-                                                        Math.max(
-                                                            subscriptionStatus.usage.youtube_channels,
-                                                            subscriptionStatus.usage.tiktok_channels
-                                                        ),
-                                                        subscriptionStatus.plan.limits.max_external_channels_per_platform
-                                                    ],
-                                                ].map(([label, used, limit]) => (
-                                                    <div key={String(label)} className="rounded-2xl bg-white/[0.03] border border-white/5 p-3">
-                                                        <div className="text-[10px] uppercase tracking-wider text-white/35">{label}</div>
-                                                        <div className="mt-1 text-lg font-black text-white">{used}<span className="text-xs text-white/35">/{limit}</span></div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </GlassCard>
-                                    )}
-
                                     <GlassCard className="p-4 border-white/5 space-y-4">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
