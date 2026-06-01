@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 
 from aiogram import Router, Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -18,6 +19,101 @@ from shared.i18n import day_unit, normalize_language, translate
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+def _telegram_channel_link(channel_id: int, title: str | None, username: str | None = None) -> str:
+    label = escape(title or str(channel_id))
+    if username:
+        uname = username.lstrip("@")
+        return f"<a href=\"https://t.me/{escape(uname)}\">{label}</a>"
+    return label
+
+
+def _youtube_url(channel_id: str | None) -> str | None:
+    yid = channel_id.strip() if channel_id else ""
+    if not yid:
+        return None
+    if yid.startswith("http"):
+        return yid
+    if "youtube.com" in yid:
+        return f"https://{yid}" if not yid.startswith("http") else yid
+    if yid.startswith("//"):
+        return f"https:{yid}"
+    if yid.startswith("@"):
+        return f"https://youtube.com/{yid}"
+    if yid.startswith("UC") or yid.startswith("HC"):
+        return f"https://youtube.com/channel/{yid}"
+    if len(yid) == 22 and all(c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in yid):
+        return f"https://youtube.com/channel/UC{yid}"
+    return f"https://youtube.com/@{yid}"
+
+
+def _tiktok_url(channel_id: str | None) -> str | None:
+    target = channel_id.strip() if channel_id else ""
+    if not target:
+        return None
+    if target.startswith("http"):
+        return target
+    return f"https://www.tiktok.com/@{target.lstrip('@')}"
+
+
+def _participation_conditions_text(contest) -> str:
+    language = normalize_language(getattr(contest, "language", None))
+    lines: list[str] = []
+
+    if getattr(contest, "channel", None):
+        lines.append(
+            "• Telegram: "
+            + _telegram_channel_link(
+                contest.channel.channel_id,
+                contest.channel.channel_title,
+                contest.channel.channel_username,
+            )
+        )
+    else:
+        lines.append(f"• Telegram: {escape(str(contest.channel_id))}")
+
+    for sponsor in getattr(contest, "sponsors", []) or []:
+        lines.append(
+            "• Sponsor: "
+            + _telegram_channel_link(
+                sponsor.channel_id,
+                sponsor.channel_title,
+                sponsor.channel_username,
+            )
+        )
+
+    if getattr(contest, "youtube_channel_id", None):
+        youtube_url = _youtube_url(contest.youtube_channel_id)
+        youtube_label = escape(contest.youtube_channel_id)
+        youtube_text = f"<a href=\"{escape(youtube_url)}\">YouTube</a>" if youtube_url else "YouTube"
+        days_required = int(getattr(contest, "youtube_subscription_days_required", 0) or 0)
+        if days_required > 0:
+            youtube_text += " " + translate(
+                language,
+                "subscription_required_days",
+                days=days_required,
+                unit=day_unit(language, days_required),
+            )
+        lines.append(f"• {youtube_text} ({youtube_label})")
+
+    if getattr(contest, "tiktok_channel_id", None):
+        tiktok_url = _tiktok_url(contest.tiktok_channel_id)
+        tiktok_label = escape(contest.tiktok_channel_id)
+        tiktok_text = f"<a href=\"{escape(tiktok_url)}\">TikTok</a>" if tiktok_url else "TikTok"
+        lines.append(f"• {tiktok_text} ({tiktok_label})")
+
+    if bool(getattr(contest, "require_captcha", False)):
+        lines.append("• Captcha")
+
+    entry_fee_stars = int(getattr(contest, "entry_fee_stars", 0) or 0)
+    if entry_fee_stars > 0:
+        lines.append(f"• Telegram Stars: {entry_fee_stars} ⭐")
+
+    if not lines:
+        return ""
+
+    return "📋 <b>Условия участия:</b>\n" + "\n".join(lines) + "\n\n"
 
 
 async def format_contest_message(
@@ -66,26 +162,7 @@ async def format_contest_message(
     
     # Информация о YouTube подписке
     if contest.youtube_channel_id:
-        youtube_url = None
-        # Формируем URL в зависимости от формата ID
-        yid = contest.youtube_channel_id.strip() if contest.youtube_channel_id else ""
-        if not yid:
-            youtube_url = None
-        elif yid.startswith('http'):
-            youtube_url = yid
-        elif 'youtube.com' in yid:
-            youtube_url = f"https://{yid}" if not yid.startswith('http') else yid
-            if yid.startswith('//'):
-                youtube_url = f"https:{yid}"
-        elif yid.startswith('@'):
-            youtube_url = f"https://youtube.com/{yid}"
-        elif yid.startswith('UC') or yid.startswith('HC'):
-            youtube_url = f"https://youtube.com/channel/{yid}"
-        elif len(yid) == 22 and all(c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in yid):
-            # Похоже на ID канала без префикса UC
-            youtube_url = f"https://youtube.com/channel/UC{yid}"
-        else:
-            youtube_url = f"https://youtube.com/@{yid}"
+        youtube_url = _youtube_url(contest.youtube_channel_id)
         
         text += f"\n📺 <b>{translate(language, 'participation_condition')}:</b>\n"
         text += f"{translate(language, 'youtube_required')}\n"
@@ -145,6 +222,12 @@ def format_results_message(contest, bot_username: str) -> tuple[str, InlineKeybo
             else:
                 winner_link = translate(language, "not_specified")
             text += f"   {translate(language, 'winner')}: {winner_link}\n\n"
+
+    text += _participation_conditions_text(contest)
+
+    participants_count = len(getattr(contest, "participants", []) or [])
+    text += f"👥 <b>Участников:</b> {participants_count}\n"
+    text += f"⏰ <b>{translate(language, 'end_date')}:</b> {contest.end_date.strftime('%d.%m.%Y %H:%M')}\n"
     
     results_url = config.build_mini_app_link(bot_username, f"results_{contest.id}")
 
