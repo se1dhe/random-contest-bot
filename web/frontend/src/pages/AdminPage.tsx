@@ -84,6 +84,14 @@ export const AdminPage: React.FC = () => {
         tiktok_channel_id?: string | null;
         require_captcha?: boolean;
         entry_fee_stars?: number;
+        entry_payment_stats?: {
+            paid_count: number;
+            paid_stars: number;
+            pending_count: number;
+            pending_stars: number;
+            failed_count: number;
+            failed_stars: number;
+        };
     }
     interface CreatedContest {
         id: number;
@@ -1390,9 +1398,29 @@ export const AdminPage: React.FC = () => {
                                 )}
                                 {(selectedContest.entry_fee_stars || 0) > 0 && (
                                     <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-amber-200">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm">⭐</span>
-                                            <span className="text-[10px] font-bold uppercase tracking-wider">Вход {selectedContest.entry_fee_stars} Stars</span>
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm">⭐</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider">Вход {selectedContest.entry_fee_stars} Stars</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-sm font-black">{selectedContest.entry_payment_stats?.paid_stars || 0} ⭐</div>
+                                                <div className="text-[10px] text-amber-100/55">собрано</div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                            <div className="rounded-xl bg-black/15 px-2 py-2">
+                                                <div className="text-sm font-black">{selectedContest.entry_payment_stats?.paid_count || 0}</div>
+                                                <div className="text-[9px] uppercase tracking-wider text-amber-100/50">оплачено</div>
+                                            </div>
+                                            <div className="rounded-xl bg-black/15 px-2 py-2">
+                                                <div className="text-sm font-black">{selectedContest.entry_payment_stats?.pending_count || 0}</div>
+                                                <div className="text-[9px] uppercase tracking-wider text-amber-100/50">ожидают</div>
+                                            </div>
+                                            <div className="rounded-xl bg-black/15 px-2 py-2">
+                                                <div className="text-sm font-black">{selectedContest.entry_payment_stats?.failed_count || 0}</div>
+                                                <div className="text-[9px] uppercase tracking-wider text-amber-100/50">ошибки</div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}

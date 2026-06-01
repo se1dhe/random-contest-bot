@@ -12,7 +12,19 @@ from bot.services.contest_service import ContestService
 from bot.services.participant_service import ParticipantService
 from bot.services.draw_service import DrawService
 from shared.services.youtube_service import YouTubeService
-from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, TikTokChannel, Participant, AdminAction, ForumTopic
+from database.models import (
+    AdminAction,
+    Channel,
+    Contest,
+    ContestEntryPayment,
+    ContestEntryPaymentStatus,
+    ForumTopic,
+    Participant,
+    Prize,
+    Sponsor,
+    TikTokChannel,
+    YoutubeChannel,
+)
 from database.models.contest import ContestStatus, ContestDrawMethod
 from sqlalchemy import delete, select, func, or_
 from sqlalchemy.orm import selectinload
@@ -227,7 +239,37 @@ def build_text_diff(previous_text: str, next_text: str) -> str:
     return "\n".join(diff_lines)
 
 
-def serialize_admin_contest(contest: Contest, participants_count: int = 0) -> dict:
+async def get_entry_payment_stats(db: AsyncSession, contest_id: int) -> dict:
+    result = await db.execute(
+        select(
+            ContestEntryPayment.status,
+            func.count(ContestEntryPayment.id),
+            func.coalesce(func.sum(ContestEntryPayment.amount_stars), 0),
+        )
+        .where(ContestEntryPayment.contest_id == contest_id)
+        .group_by(ContestEntryPayment.status)
+    )
+    stats = {
+        "paid_count": 0,
+        "paid_stars": 0,
+        "pending_count": 0,
+        "pending_stars": 0,
+        "failed_count": 0,
+        "failed_stars": 0,
+    }
+    for status, count, amount in result.all():
+        prefix = {
+            ContestEntryPaymentStatus.SUCCEEDED: "paid",
+            ContestEntryPaymentStatus.PENDING: "pending",
+            ContestEntryPaymentStatus.FAILED: "failed",
+        }.get(status)
+        if prefix:
+            stats[f"{prefix}_count"] = int(count or 0)
+            stats[f"{prefix}_stars"] = int(amount or 0)
+    return stats
+
+
+def serialize_admin_contest(contest: Contest, participants_count: int = 0, entry_payment_stats: Optional[dict] = None) -> dict:
     return {
         "id": contest.id,
         "title": contest.title,
@@ -254,6 +296,14 @@ def serialize_admin_contest(contest: Contest, participants_count: int = 0) -> di
         "tiktok_channel_id": contest.tiktok_channel_id,
         "require_captcha": bool(getattr(contest, "require_captcha", False)),
         "entry_fee_stars": int(getattr(contest, "entry_fee_stars", 0) or 0),
+        "entry_payment_stats": entry_payment_stats or {
+            "paid_count": 0,
+            "paid_stars": 0,
+            "pending_count": 0,
+            "pending_stars": 0,
+            "failed_count": 0,
+            "failed_stars": 0,
+        },
         "image_path": contest.image_path,
         "prizes": [
             {
@@ -739,7 +789,41 @@ async def get_contests(
     result = await db.execute(query)
     rows = result.all()
 
-    items = [serialize_admin_contest(contest, participants_count or 0) for contest, participants_count in rows]
+    stats_by_contest: dict[int, dict] = {}
+    contest_ids = [contest.id for contest, _ in rows]
+    if contest_ids:
+        stats_result = await db.execute(
+            select(
+                ContestEntryPayment.contest_id,
+                ContestEntryPayment.status,
+                func.count(ContestEntryPayment.id),
+                func.coalesce(func.sum(ContestEntryPayment.amount_stars), 0),
+            )
+            .where(ContestEntryPayment.contest_id.in_(contest_ids))
+            .group_by(ContestEntryPayment.contest_id, ContestEntryPayment.status)
+        )
+        for contest_id, payment_status, count, amount in stats_result.all():
+            stats = stats_by_contest.setdefault(contest_id, {
+                "paid_count": 0,
+                "paid_stars": 0,
+                "pending_count": 0,
+                "pending_stars": 0,
+                "failed_count": 0,
+                "failed_stars": 0,
+            })
+            prefix = {
+                ContestEntryPaymentStatus.SUCCEEDED: "paid",
+                ContestEntryPaymentStatus.PENDING: "pending",
+                ContestEntryPaymentStatus.FAILED: "failed",
+            }.get(payment_status)
+            if prefix:
+                stats[f"{prefix}_count"] = int(count or 0)
+                stats[f"{prefix}_stars"] = int(amount or 0)
+
+    items = [
+        serialize_admin_contest(contest, participants_count or 0, stats_by_contest.get(contest.id))
+        for contest, participants_count in rows
+    ]
 
     if paginated:
         return {
@@ -762,7 +846,7 @@ async def get_admin_contest(
     contest = await service.get_contest_by_id(contest_id)
     require_owned(contest, admin_id, "Конкурс не найден")
     participants_count = len(contest.participants) if contest.participants else 0
-    return serialize_admin_contest(contest, participants_count)
+    return serialize_admin_contest(contest, participants_count, await get_entry_payment_stats(db, contest.id))
 
 
 @router.post("/contests")
@@ -1239,7 +1323,11 @@ async def update_contest(
     refreshed = await service.get_contest_by_id(contest.id)
     return {
         "success": True,
-        "contest": serialize_admin_contest(refreshed, len(refreshed.participants) if refreshed.participants else 0),
+        "contest": serialize_admin_contest(
+            refreshed,
+            len(refreshed.participants) if refreshed.participants else 0,
+            await get_entry_payment_stats(db, refreshed.id),
+        ),
         "post_update_status": post_update_status,
     }
 
