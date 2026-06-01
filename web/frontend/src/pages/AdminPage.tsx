@@ -59,19 +59,29 @@ export const AdminPage: React.FC = () => {
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<AdminTab>('dash');
     const [isCreating, setIsCreating] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
     interface AdminContest {
         id: number;
         title: string;
         status: string;
+        description?: string | null;
+        language?: 'ru' | 'uk' | 'en';
+        channel_id?: number;
+        message_thread_id?: number | null;
+        draw_method?: string;
+        post_to_sponsors?: boolean;
         prize_count: number;
         participants_count?: number;
         end_date: string;
         publish_at?: string | null;
         prizes?: Array<{ id?: number; place: number; title?: string; description?: string }>;
         channel?: { channel_title?: string; channel_username?: string | null };
+        sponsors?: Array<{ id?: number; channel_id: number; channel_title: string; channel_username?: string | null }>;
         require_youtube_subscription?: boolean;
         youtube_subscription_days_required?: number;
+        youtube_channel_id?: string | null;
         require_tiktok_follow?: boolean;
+        tiktok_channel_id?: string | null;
         require_captcha?: boolean;
         entry_fee_stars?: number;
     }
@@ -600,6 +610,7 @@ export const AdminPage: React.FC = () => {
         hapticFeedback('light');
         setActiveTab(tab);
         setIsCreating(false);
+        setIsEditing(false);
         setSelectedContest(null);
         setError(null);
         setSuccessMessage(null);
@@ -612,6 +623,7 @@ export const AdminPage: React.FC = () => {
 
     const handleCreateSuccess = async (createdContest?: CreatedContest) => {
         setIsCreating(false);
+        setIsEditing(false);
         setActiveTab('contests');
         setContestFilter('all');
         setContestSearch('');
@@ -641,6 +653,19 @@ export const AdminPage: React.FC = () => {
         }
     };
 
+    const handleEditSuccess = async (updatedContest?: CreatedContest) => {
+        setIsEditing(false);
+        setSuccessMessage('Конкурс сохранен');
+        await refreshContestDetails(updatedContest?.id || selectedContest?.id);
+        if (updatedContest?.id) {
+            const res = await axios.get(`/api/admin/contests/${updatedContest.id}`, {
+                headers: { '_auth': initData },
+                params: { _auth: initData }
+            });
+            setSelectedContest(res.data);
+        }
+    };
+
     const handleRefreshAll = () => {
         hapticFeedback('medium');
         refetchContests();
@@ -667,6 +692,7 @@ export const AdminPage: React.FC = () => {
         }
 
         setSelectedContest(contest);
+        setIsEditing(false);
         setError(null);
         setSuccessMessage(null);
     };
@@ -1233,6 +1259,22 @@ export const AdminPage: React.FC = () => {
                             />
                         </Suspense>
                     </motion.div>
+                ) : isEditing && selectedContest ? (
+                    <motion.div
+                        key={`edit-form-${selectedContest.id}`}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                    >
+                        <Suspense fallback={<div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-sm text-white/40">Загрузка формы конкурса...</div>}>
+                            <ContestForm
+                                mode="edit"
+                                initialContest={selectedContest}
+                                onSuccess={handleEditSuccess}
+                                onCancel={() => setIsEditing(false)}
+                            />
+                        </Suspense>
+                    </motion.div>
                 ) : selectedContest ? (
                     <motion.div
                         key="details"
@@ -1355,6 +1397,13 @@ export const AdminPage: React.FC = () => {
                                     </div>
                                 )}
                             </GlassCard>
+
+                            <Button
+                                onClick={() => setIsEditing(true)}
+                                className="w-full"
+                            >
+                                РЕДАКТИРОВАТЬ КОНКУРС
+                            </Button>
 
                             <Button
                                 variant="secondary"

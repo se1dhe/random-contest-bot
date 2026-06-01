@@ -14,7 +14,7 @@ from bot.services.draw_service import DrawService
 from shared.services.youtube_service import YouTubeService
 from database.models import Channel, Contest, Prize, Sponsor, YoutubeChannel, TikTokChannel, Participant, AdminAction, ForumTopic
 from database.models.contest import ContestStatus, ContestDrawMethod
-from sqlalchemy import select, func, or_
+from sqlalchemy import delete, select, func, or_
 from sqlalchemy.orm import selectinload
 from shared.config import config
 from shared.services.upload_storage import build_upload_image_path, build_upload_path, ensure_upload_dir
@@ -225,6 +225,53 @@ def build_text_diff(previous_text: str, next_text: str) -> str:
         lineterm="",
     )
     return "\n".join(diff_lines)
+
+
+def serialize_admin_contest(contest: Contest, participants_count: int = 0) -> dict:
+    return {
+        "id": contest.id,
+        "title": contest.title,
+        "description": contest.description,
+        "language": normalize_language(contest.language),
+        "channel_id": contest.channel_id,
+        "message_thread_id": contest.message_thread_id,
+        "channel": {
+            "channel_id": contest.channel.channel_id if contest.channel else None,
+            "channel_title": contest.channel.channel_title if contest.channel else None,
+            "channel_username": contest.channel.channel_username if contest.channel else None,
+        } if contest.channel else None,
+        "end_date": contest.end_date.isoformat(),
+        "status": contest.status.value,
+        "draw_method": contest.draw_method.value,
+        "publish_at": contest.publish_at.isoformat() if contest.publish_at else None,
+        "participants_count": participants_count,
+        "prize_count": contest.prize_count,
+        "post_to_sponsors": bool(contest.post_to_sponsors),
+        "require_youtube_subscription": bool(contest.youtube_channel_id),
+        "youtube_subscription_days_required": contest.youtube_subscription_days_required,
+        "youtube_channel_id": contest.youtube_channel_id,
+        "require_tiktok_follow": bool(contest.tiktok_channel_id),
+        "tiktok_channel_id": contest.tiktok_channel_id,
+        "require_captcha": bool(getattr(contest, "require_captcha", False)),
+        "entry_fee_stars": int(getattr(contest, "entry_fee_stars", 0) or 0),
+        "image_path": contest.image_path,
+        "prizes": [
+            {
+                "id": p.id,
+                "place": p.place,
+                "title": p.title,
+                "description": p.description,
+            } for p in sorted(contest.prizes or [], key=lambda prize: prize.place)
+        ],
+        "sponsors": [
+            {
+                "id": sponsor.id,
+                "channel_id": sponsor.channel_id,
+                "channel_title": sponsor.channel_title,
+                "channel_username": sponsor.channel_username,
+            } for sponsor in (contest.sponsors or [])
+        ],
+    }
 
 
 @router.get("/channels")
@@ -667,7 +714,8 @@ async def get_contests(
         )
         .options(
             selectinload(Contest.channel),
-            selectinload(Contest.prizes)
+            selectinload(Contest.prizes),
+            selectinload(Contest.sponsors),
         )
     )
     if should_join_channel:
@@ -691,40 +739,7 @@ async def get_contests(
     result = await db.execute(query)
     rows = result.all()
 
-    items = [
-        {
-            "id": contest.id,
-            "title": contest.title,
-            "language": normalize_language(contest.language),
-            "channel_id": contest.channel_id,
-            "message_thread_id": contest.message_thread_id,
-            "channel": {
-                "channel_id": contest.channel.channel_id if contest.channel else None,
-                "channel_title": contest.channel.channel_title if contest.channel else None,
-                "channel_username": contest.channel.channel_username if contest.channel else None
-            } if contest.channel else None,
-            "end_date": contest.end_date.isoformat(),
-            "status": contest.status.value,
-            "publish_at": contest.publish_at.isoformat() if contest.publish_at else None,
-            "participants_count": participants_count or 0,
-            "prize_count": contest.prize_count,
-            "require_youtube_subscription": bool(contest.youtube_channel_id),
-            "youtube_subscription_days_required": contest.youtube_subscription_days_required,
-            "youtube_channel_id": contest.youtube_channel_id,
-            "require_tiktok_follow": bool(contest.tiktok_channel_id),
-            "tiktok_channel_id": contest.tiktok_channel_id,
-            "require_captcha": bool(getattr(contest, "require_captcha", False)),
-            "entry_fee_stars": int(getattr(contest, "entry_fee_stars", 0) or 0),
-            "prizes": [
-                {
-                    "id": p.id,
-                    "place": p.place,
-                    "title": p.title
-                } for p in contest.prizes
-            ] if contest.prizes else []
-        }
-        for contest, participants_count in rows
-    ]
+    items = [serialize_admin_contest(contest, participants_count or 0) for contest, participants_count in rows]
 
     if paginated:
         return {
@@ -735,6 +750,19 @@ async def get_contests(
         }
 
     return items
+
+
+@router.get("/contests/{contest_id}")
+async def get_admin_contest(
+    contest_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin),
+):
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    require_owned(contest, admin_id, "Конкурс не найден")
+    participants_count = len(contest.participants) if contest.participants else 0
+    return serialize_admin_contest(contest, participants_count)
 
 
 @router.post("/contests")
@@ -1020,6 +1048,199 @@ async def create_contest(
         "id": contest.id,
         "title": contest.title,
         "status": contest.status.value
+    }
+
+
+@router.put("/contests/{contest_id}")
+async def update_contest(
+    contest_id: int,
+    title: str = Form(...),
+    description: Optional[str] = Form(None),
+    language: str = Form("ru"),
+    channel_id: int = Form(...),
+    end_date: str = Form(...),
+    prize_count: int = Form(...),
+    draw_method: str = Form(...),
+    prizes: str = Form(...),
+    sponsors: Optional[str] = Form(None),
+    require_youtube_subscription: bool = Form(False),
+    youtube_subscription_days_required: int = Form(0),
+    youtube_channel_id: Optional[str] = Form(None),
+    require_tiktok_follow: bool = Form(False),
+    tiktok_channel_id: Optional[str] = Form(None),
+    require_captcha: bool = Form(False),
+    entry_fee_stars: int = Form(0),
+    message_thread_id: Optional[int] = Form(None),
+    post_to_sponsors: bool = Form(False),
+    image: Optional[UploadFile] = File(None),
+    db: AsyncSession = Depends(get_db),
+    admin_id: int = Depends(verify_admin),
+):
+    """
+    Обновить всю редактируемую информацию конкурса.
+    Доступно для черновиков, запланированных и активных конкурсов.
+    """
+    import json
+
+    service = ContestService(db)
+    contest = await service.get_contest_by_id(contest_id)
+    require_owned(contest, admin_id, "Конкурс не найден")
+    if contest.status not in (ContestStatus.DRAFT, ContestStatus.ACTIVE):
+        raise HTTPException(status_code=400, detail="Редактировать можно только черновики, запланированные и активные конкурсы")
+
+    old_channel_id = contest.channel_id
+    try:
+        prizes_data = json.loads(prizes)
+        sponsors_data = json.loads(sponsors) if sponsors else []
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Ошибка парсинга JSON: {str(exc)}") from exc
+
+    entry_fee_stars = max(0, int(entry_fee_stars or 0))
+    if entry_fee_stars > 2500:
+        raise HTTPException(status_code=400, detail="Цена регистрации не может превышать 2500 Telegram Stars")
+
+    if sponsors_data:
+        sponsor_ids = [int(sponsor["channel_id"]) for sponsor in sponsors_data]
+        duplicate_ids = sorted({str(cid) for cid in sponsor_ids if sponsor_ids.count(cid) > 1})
+        if duplicate_ids:
+            raise HTTPException(status_code=400, detail=f"Каналы-спонсоры повторяются: {', '.join(duplicate_ids)}")
+        if channel_id in sponsor_ids:
+            raise HTTPException(status_code=400, detail="Основной канал конкурса нельзя одновременно указывать как канал-спонсор")
+
+    try:
+        parsed_end = date_parser.parse(end_date)
+        if parsed_end.tzinfo is not None:
+            from pytz import timezone
+            parsed_end = parsed_end.astimezone(timezone('Europe/Kyiv')).replace(tzinfo=None)
+        end_dt = parsed_end
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(status_code=400, detail="Некорректный формат даты окончания") from exc
+
+    channel_result = await db.execute(select(Channel).where(Channel.channel_id == channel_id))
+    channel = channel_result.scalar_one_or_none()
+    require_owned(channel, admin_id, "Канал не найден")
+
+    final_youtube_channel_id = None
+    if require_youtube_subscription:
+        if youtube_channel_id and youtube_channel_id.strip():
+            final_youtube_channel_id = youtube_channel_id.strip()
+        elif channel.youtube_channel_id:
+            final_youtube_channel_id = channel.youtube_channel_id
+        else:
+            raise HTTPException(status_code=400, detail="Для этого конкурса требуется подписка на YouTube канал, но YouTube канал не выбран.")
+
+    final_tiktok_channel_id = None
+    if require_tiktok_follow:
+        if tiktok_channel_id and tiktok_channel_id.strip():
+            final_tiktok_channel_id = tiktok_channel_id.strip()
+        else:
+            raise HTTPException(status_code=400, detail="Для этого конкурса требуется TikTok-канал, но он не указан.")
+
+    final_message_thread_id = message_thread_id if message_thread_id and message_thread_id > 0 else None
+    if final_message_thread_id:
+        topic_result = await db.execute(
+            select(ForumTopic).where(
+                ForumTopic.chat_id == channel_id,
+                ForumTopic.message_thread_id == final_message_thread_id,
+            )
+        )
+        if not topic_result.scalar_one_or_none():
+            db.add(
+                ForumTopic(
+                    chat_id=channel_id,
+                    message_thread_id=final_message_thread_id,
+                    name=f"Топик #{final_message_thread_id}",
+                    is_active=True,
+                )
+            )
+
+    if image and image.filename:
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+        file_ext = Path(image.filename).suffix.lower()
+        if file_ext not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Недопустимый формат изображения. Разрешены: JPG, PNG, GIF, WEBP")
+        file_id = str(uuid.uuid4())
+        filename = f"{file_id}{file_ext}"
+        file_path = build_upload_path(filename)
+        with open(file_path, "wb") as buffer:
+            while True:
+                chunk = image.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                buffer.write(chunk)
+        contest.image_path = build_upload_image_path(filename)
+
+    contest.title = title
+    contest.description = description
+    contest.language = normalize_language(language)
+    contest.channel_id = channel_id
+    contest.message_thread_id = final_message_thread_id
+    contest.end_date = end_dt
+    contest.prize_count = int(prize_count)
+    contest.draw_method = ContestDrawMethod.RANDOM if draw_method == "random" else ContestDrawMethod.BY_ACTIVITY
+    contest.youtube_channel_id = final_youtube_channel_id
+    contest.youtube_subscription_days_required = youtube_subscription_days_required if require_youtube_subscription else 0
+    contest.tiktok_channel_id = final_tiktok_channel_id
+    contest.require_captcha = bool(require_captcha)
+    contest.entry_fee_stars = entry_fee_stars
+    contest.post_to_sponsors = bool(post_to_sponsors)
+
+    await db.execute(delete(Prize).where(Prize.contest_id == contest.id))
+    for prize_data in prizes_data:
+        db.add(
+            Prize(
+                contest_id=contest.id,
+                place=prize_data["place"],
+                title=prize_data["title"],
+                description=prize_data.get("description"),
+            )
+        )
+
+    await db.execute(delete(Sponsor).where(Sponsor.contest_id == contest.id))
+    for sponsor_data in sponsors_data:
+        db.add(
+            Sponsor(
+                contest_id=contest.id,
+                channel_id=sponsor_data["channel_id"],
+                channel_title=sponsor_data["channel_title"],
+                channel_username=sponsor_data.get("channel_username"),
+            )
+        )
+
+    await db.commit()
+    await db.refresh(contest)
+
+    post_update_status = None
+    if contest.status == ContestStatus.ACTIVE and contest.message_id and old_channel_id == contest.channel_id:
+        bot = Bot(token=config.bot_token)
+        try:
+            post_update_status = "updated" if await edit_contest_post(contest.id, bot) else "failed"
+        finally:
+            await bot.session.close()
+    elif contest.status == ContestStatus.ACTIVE and old_channel_id != contest.channel_id:
+        post_update_status = "skipped_channel_changed"
+
+    await audit_admin(
+        db,
+        admin_id=admin_id,
+        action_type="contest_updated",
+        target_type="contest",
+        target_id=str(contest.id),
+        contest_id=contest.id,
+        payload={
+            "title": contest.title,
+            "status": contest.status.value,
+            "post_update_status": post_update_status,
+            "channel_changed": old_channel_id != contest.channel_id,
+        },
+    )
+    await db.commit()
+
+    refreshed = await service.get_contest_by_id(contest.id)
+    return {
+        "success": True,
+        "contest": serialize_admin_contest(refreshed, len(refreshed.participants) if refreshed.participants else 0),
+        "post_update_status": post_update_status,
     }
 
 

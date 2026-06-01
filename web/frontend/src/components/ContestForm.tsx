@@ -28,6 +28,7 @@ interface Prize {
 interface Sponsor {
     channel_id: number;
     channel_title: string;
+    channel_username?: string | null;
 }
 interface AdminChannel {
     channel_id: number;
@@ -55,42 +56,75 @@ interface CreatedContest {
     status: string;
 }
 
+interface EditableContest {
+    id: number;
+    title: string;
+    description?: string | null;
+    language?: ContestLanguage;
+    channel_id?: number;
+    message_thread_id?: number | null;
+    end_date: string;
+    prize_count: number;
+    draw_method?: string;
+    prizes?: Array<{ place: number; title?: string; description?: string | null }>;
+    sponsors?: Sponsor[];
+    post_to_sponsors?: boolean;
+    require_youtube_subscription?: boolean;
+    youtube_subscription_days_required?: number;
+    youtube_channel_id?: string | null;
+    require_tiktok_follow?: boolean;
+    tiktok_channel_id?: string | null;
+    require_captcha?: boolean;
+    entry_fee_stars?: number;
+}
+
 interface ContestFormProps {
     onSuccess: (contest?: CreatedContest) => void;
     onCancel: () => void;
+    mode?: 'create' | 'edit';
+    initialContest?: EditableContest | null;
 }
 
-export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel }) => {
+const toDatetimeLocal = (value?: string | null) => {
+    if (!value) return '';
+    return value.slice(0, 16);
+};
+
+export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel, mode = 'create', initialContest }) => {
     const { initData, hapticFeedback } = useTelegram();
     const [step, setStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Form State
-    const [title, setTitle] = useState('');
-    const [description, setDescription] = useState('');
-    const [language, setLanguage] = useState<ContestLanguage>('ru');
-    const [channelId, setChannelId] = useState('');
-    const [topicChoice, setTopicChoice] = useState('');
+    const [title, setTitle] = useState(initialContest?.title || '');
+    const [description, setDescription] = useState(initialContest?.description || '');
+    const [language, setLanguage] = useState<ContestLanguage>(initialContest?.language || 'ru');
+    const [channelId, setChannelId] = useState(initialContest?.channel_id ? String(initialContest.channel_id) : '');
+    const [topicChoice, setTopicChoice] = useState(initialContest?.message_thread_id ? `topic:${initialContest.message_thread_id}` : '');
     const [manualThreadId, setManualThreadId] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [prizeCount, setPrizeCount] = useState(1);
-    const [drawMethod, setDrawMethod] = useState('random');
-    const [prizes, setPrizes] = useState<Prize[]>([{ place: 1, title: '', description: '' }]);
-    const [sponsors, setSponsors] = useState<Sponsor[]>([]); // Initialize properly
-    const [postToSponsors, setPostToSponsors] = useState(false);
-    const [requireYoutube, setRequireYoutube] = useState(false);
-    const [youtubeDays, setYoutubeDays] = useState(0);
-    const [requireTikTok, setRequireTikTok] = useState(false);
-    const [tiktokChannelId, setTikTokChannelId] = useState('');
-    const [requireCaptcha, setRequireCaptcha] = useState(false);
-    const [paidEntryEnabled, setPaidEntryEnabled] = useState(false);
-    const [entryFeeStars, setEntryFeeStars] = useState(5);
+    const [endDate, setEndDate] = useState(toDatetimeLocal(initialContest?.end_date));
+    const [prizeCount, setPrizeCount] = useState(initialContest?.prize_count || 1);
+    const [drawMethod, setDrawMethod] = useState(initialContest?.draw_method || 'random');
+    const [prizes, setPrizes] = useState<Prize[]>(
+        initialContest?.prizes?.length
+            ? initialContest.prizes.map((p, idx) => ({ place: p.place || idx + 1, title: p.title || '', description: p.description || '' }))
+            : [{ place: 1, title: '', description: '' }]
+    );
+    const [sponsors, setSponsors] = useState<Sponsor[]>(initialContest?.sponsors || []);
+    const [postToSponsors, setPostToSponsors] = useState(Boolean(initialContest?.post_to_sponsors));
+    const [requireYoutube, setRequireYoutube] = useState(Boolean(initialContest?.require_youtube_subscription));
+    const [youtubeDays, setYoutubeDays] = useState(initialContest?.youtube_subscription_days_required || 0);
+    const [requireTikTok, setRequireTikTok] = useState(Boolean(initialContest?.require_tiktok_follow));
+    const [tiktokChannelId, setTikTokChannelId] = useState(initialContest?.tiktok_channel_id || '');
+    const [requireCaptcha, setRequireCaptcha] = useState(Boolean(initialContest?.require_captcha));
+    const [paidEntryEnabled, setPaidEntryEnabled] = useState((initialContest?.entry_fee_stars || 0) > 0);
+    const [entryFeeStars, setEntryFeeStars] = useState(initialContest?.entry_fee_stars || 5);
     const [image, setImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
     // New Fields
-    const [youtubeChannelId, setYoutubeChannelId] = useState('');
+    const [youtubeChannelId, setYoutubeChannelId] = useState(initialContest?.youtube_channel_id || '');
 
     const normalizedTitle = title.trim();
     const titleTooShort = normalizedTitle.length > 0 && normalizedTitle.length < 3;
@@ -185,7 +219,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         if (sponsors.find(s => s.channel_id === ch.channel_id)) {
             setSponsors(sponsors.filter(s => s.channel_id !== ch.channel_id));
         } else {
-            setSponsors([...sponsors, { channel_id: ch.channel_id, channel_title: ch.channel_title }]);
+            setSponsors([...sponsors, { channel_id: ch.channel_id, channel_title: ch.channel_title, channel_username: ch.channel_username }]);
         }
     };
 
@@ -246,7 +280,13 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
         if (image) formData.append('image', image);
 
         try {
-            const response = await axios.post<CreatedContest>('/api/admin/contests', formData, {
+            const url = mode === 'edit' && initialContest
+                ? `/api/admin/contests/${initialContest.id}`
+                : '/api/admin/contests';
+            const response = await axios.request<CreatedContest | { contest: CreatedContest }>({
+                method: mode === 'edit' ? 'put' : 'post',
+                url,
+                data: formData,
                 headers: {
                     '_auth': initData,
                     'Content-Type': 'multipart/form-data'
@@ -254,12 +294,12 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                 params: { _auth: initData } // Backend might expect it here too
             });
             hapticFeedback('heavy');
-            onSuccess(response.data);
+            onSuccess('contest' in response.data ? response.data.contest : response.data);
         } catch (err: unknown) {
-            console.error('Failed to create contest', err);
+            console.error('Failed to save contest', err);
             hapticFeedback('rigid');
             const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-            setError(detail || 'Не удалось создать конкурс');
+            setError(detail || (mode === 'edit' ? 'Не удалось сохранить конкурс' : 'Не удалось создать конкурс'));
         } finally {
             setIsSubmitting(false);
         }
@@ -292,7 +332,7 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
                 <button onClick={onCancel} className="p-2 bg-white/5 rounded-full text-white/40">
                     <ChevronLeft size={20} />
                 </button>
-                <h2 className="text-xl font-bold">Новый конкурс</h2>
+                <h2 className="text-xl font-bold">{mode === 'edit' ? 'Редактировать конкурс' : 'Новый конкурс'}</h2>
             </header>
 
             {/* Progress Bar */}
@@ -768,7 +808,9 @@ export const ContestForm: React.FC<ContestFormProps> = ({ onSuccess, onCancel })
 
                         <div className="flex space-x-3">
                             <Button variant="secondary" onClick={prevStep} className="flex-1" disabled={isSubmitting}>Назад</Button>
-                            <Button onClick={handleSubmit} isLoading={isSubmitting} disabled={hasStep3ValidationErrors} className="flex-[2]">Создать конкурс</Button>
+                            <Button onClick={handleSubmit} isLoading={isSubmitting} disabled={hasStep3ValidationErrors} className="flex-[2]">
+                                {mode === 'edit' ? 'Сохранить' : 'Создать конкурс'}
+                            </Button>
                         </div>
                     </motion.div>
                 )}
