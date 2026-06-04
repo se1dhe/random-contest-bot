@@ -20,6 +20,29 @@ app = FastAPI(title="Contest Bot WebApp")
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 uploads_dir = ensure_upload_dir()
 dist_dir = os.path.join(static_dir, "dist")
+presentation_dir = os.path.join(static_dir, "presentation")
+presentation_index = os.path.join(presentation_dir, "index.html")
+presentation_images_dir = os.path.join(presentation_dir, "images")
+
+
+def _request_host(request: Request) -> str:
+    return request.headers.get("host", "").split(":")[0].lower()
+
+
+def _is_presentation_host(host: str) -> bool:
+    if host in {"context.telonyx.app", "www.context.telonyx.app"}:
+        return True
+    return host.startswith("context.") and host.endswith(".telonyx.app")
+
+
+def _presentation_file_response(relative_path: str) -> FileResponse | None:
+    safe_path = os.path.normpath(relative_path).lstrip(os.sep)
+    if safe_path.startswith(".."):
+        return None
+    file_path = os.path.join(presentation_dir, safe_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return None
 
 # Монтируем загрузки
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
@@ -36,6 +59,29 @@ app.include_router(youtube_auth.router)
 app.include_router(tiktok_auth.router)
 app.include_router(ws.router)
 app.include_router(analytics.router)
+
+
+@app.middleware("http")
+async def presentation_host_router(request: Request, call_next):
+    """Serve marketing presentation on context.telonyx.app without affecting contest Mini App."""
+    host = _request_host(request)
+    if not _is_presentation_host(host):
+        return await call_next(request)
+
+    path = request.url.path
+    if path.startswith(("/api/", "/uploads/", "/assets/")):
+        return await call_next(request)
+
+    if path.startswith("/images/"):
+        image_response = _presentation_file_response(path.lstrip("/"))
+        if image_response:
+            return image_response
+
+    if os.path.exists(presentation_index):
+        return FileResponse(presentation_index)
+
+    return await call_next(request)
+
 
 LEGAL_PAGE_STYLE = """
 body {
