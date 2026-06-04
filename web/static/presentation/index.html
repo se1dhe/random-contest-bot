@@ -1,593 +1,708 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TelOnyx Contest Bot — Presentation</title>
-  <meta name="description" content="Self-hosted Telegram Mini App for transparent giveaways with admin panel, multi-platform verification, and real-time analytics.">
-  <meta property="og:title" content="TelOnyx Contest Bot">
-  <meta property="og:description" content="Premium Telegram Mini App for community giveaways">
-  <meta property="og:image" content="/presentation/images/contest-desktop-gate.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0a0a0b;
-      --bg-elevated: rgba(255,255,255,0.04);
-      --border: rgba(255,255,255,0.1);
-      --text: #f4f4f5;
-      --muted: #a1a1aa;
-      --teal: #2dd4bf;
-      --coral: #f87171;
-      --purple: #8b5cf6;
-      --radius: 18px;
-      --max: 1120px;
-    }
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
-    body {
-      margin: 0;
-      font-family: Inter, system-ui, sans-serif;
-      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(45,212,191,0.12), transparent 60%),
-                  radial-gradient(ellipse 60% 40% at 80% 20%, rgba(248,113,113,0.08), transparent 50%),
-                  var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-    }
-    a { color: var(--teal); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
-    .glass {
-      background: var(--bg-elevated);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-    }
-    header {
-      position: sticky; top: 0; z-index: 50;
-      backdrop-filter: blur(16px);
-      background: rgba(10,10,11,0.85);
-      border-bottom: 1px solid var(--border);
-    }
-    .header-inner {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; padding: 14px 0; flex-wrap: wrap;
-    }
-    .logo { font-weight: 900; letter-spacing: -0.02em; font-size: 1.1rem; }
-    .logo span { color: var(--coral); }
-    .lang-switch {
-      display: flex; flex-wrap: wrap; gap: 6px;
-    }
-    .lang-btn {
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--muted);
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all .2s;
-    }
-    .lang-btn.active, .lang-btn:hover {
-      color: var(--text);
-      border-color: rgba(45,212,191,0.5);
-      background: rgba(45,212,191,0.08);
-    }
-    .hero {
-      text-align: center;
-      padding: 72px 0 48px;
-    }
-    .hero-badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--teal);
-      margin-bottom: 16px;
-    }
-    .hero h1 {
-      font-size: clamp(2rem, 5vw, 3.4rem);
-      line-height: 1.08;
-      margin: 0 0 16px;
-      font-weight: 900;
-    }
-    .hero h1 em { color: var(--coral); font-style: normal; }
-    .hero p {
-      max-width: 720px;
-      margin: 0 auto 28px;
-      color: var(--muted);
-      font-size: 1.05rem;
-    }
-    .cta-row {
-      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
-      margin-bottom: 40px;
-    }
-    .btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 14px 22px; border-radius: 14px;
-      font-weight: 700; font-size: 14px;
-      border: 1px solid transparent;
-      transition: transform .15s, box-shadow .15s;
-    }
-    .btn:hover { transform: translateY(-1px); text-decoration: none; }
-    .btn-primary {
-      background: linear-gradient(135deg, rgba(248,113,113,0.25), rgba(248,113,113,0.12));
-      border-color: rgba(248,113,113,0.45);
-      color: #fff;
-      box-shadow: 0 8px 32px rgba(248,113,113,0.15);
-    }
-    .btn-secondary {
-      background: rgba(45,212,191,0.08);
-      border-color: rgba(45,212,191,0.35);
-      color: var(--teal);
-    }
-    .hero-shot {
-      max-width: 900px; margin: 0 auto;
-      border-radius: 24px; overflow: hidden;
-      border: 1px solid var(--border);
-      box-shadow: 0 24px 80px rgba(0,0,0,0.45);
-    }
-    .hero-shot img { width: 100%; display: block; }
-    section { padding: 56px 0; }
-    .section-title {
-      font-size: clamp(1.5rem, 3vw, 2rem);
-      margin: 0 0 10px;
-      font-weight: 800;
-    }
-    .section-sub {
-      color: var(--muted);
-      margin: 0 0 28px;
-      max-width: 680px;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-    }
-    .grid-3 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
-    }
-    .card { padding: 22px; }
-    .card h3 { margin: 0 0 8px; font-size: 1rem; }
-    .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
-    .icon {
-      width: 40px; height: 40px; border-radius: 12px;
-      display: grid; place-items: center;
-      margin-bottom: 12px; font-size: 18px;
-      background: rgba(139,92,246,0.15);
-      border: 1px solid rgba(139,92,246,0.25);
-    }
-    .problem li, .feature-list li {
-      margin-bottom: 8px;
-      color: var(--muted);
-    }
-    .screens {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
-    }
-    .screens figure {
-      margin: 0;
-      overflow: hidden;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: var(--bg-elevated);
-    }
-    .screens img { width: 100%; display: block; }
-    .screens figcaption {
-      padding: 12px 14px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-    .stack {
-      display: flex; flex-wrap: wrap; gap: 8px;
-    }
-    .tag {
-      font-size: 12px; font-weight: 600;
-      padding: 8px 12px; border-radius: 999px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.03);
-      color: #d4d4d8;
-    }
-    .arch {
-      padding: 24px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 13px;
-      color: #cbd5e1;
-      white-space: pre-wrap;
-      line-height: 1.7;
-    }
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 32px 0 48px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .footer-links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
-    @media (max-width: 640px) {
-      .hero { padding-top: 48px; }
-      .header-inner { justify-content: center; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="wrap header-inner">
-      <div class="logo">TELONYX<span>.APP</span></div>
-      <nav class="lang-switch" id="langSwitch" aria-label="Language"></nav>
-    </div>
-  </header>
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TelOnyx Contest Bot — презентация продукта</title>
+    <meta
+      name="description"
+      content="Продающая презентация Telegram-бота для розыгрышей: React Mini App, WebSocket-счётчики, мультиплатформенная проверка подписок, аналитика и self-hosted деплой."
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: "#07090f",
+              accent: {
+                DEFAULT: "#5b8dee",
+                dark: "#3a6bd4",
+                light: "#a5c0f8",
+              },
+              coral: "#f87171",
+              panel: "rgba(12, 18, 32, 0.72)",
+              "panel-strong": "rgba(8, 13, 24, 0.88)",
+              muted: "#8a98b8",
+              ink: "#e8edf8",
+            },
+            fontFamily: {
+              display: ["Syne", "Inter", "system-ui", "sans-serif"],
+              body: ["Outfit", "Inter", "system-ui", "sans-serif"],
+            },
+            boxShadow: {
+              glass: "inset 0 0 10px rgba(255,255,255,0.04), 0 8px 32px rgba(0,0,0,0.55)",
+              glow: "0 0 24px rgba(91, 141, 238, 0.45)",
+              card: "0 14px 40px rgba(0, 0, 0, 0.5)",
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html { scroll-behavior: smooth; }
 
-  <main>
-    <section class="hero wrap">
-      <div class="hero-badge" data-i18n="badge">CONTEST BOT 2.0</div>
-      <h1 data-i18n="heroTitle">Premium <em>Telegram Mini App</em> for transparent giveaways</h1>
-      <p data-i18n="heroSubtitle">Self-hosted bot with a React admin panel, real-time counters, multi-platform subscription checks, and analytics — without a shared SaaS platform.</p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="https://t.me/telonyx_contest_bot" target="_blank" rel="noopener" data-i18n="ctaBot">Open bot in Telegram</a>
-        <a class="btn btn-secondary" href="https://contest.telonyx.app" data-i18n="ctaApp">Mini App (Telegram only)</a>
-      </div>
-      <div class="hero-shot">
-        <img src="/presentation/images/contest-desktop-gate.png" alt="TelOnyx Contest Bot gate screen" width="1200" height="675">
-      </div>
-    </section>
+      body {
+        background:
+          radial-gradient(circle at 12% 8%, rgba(91, 141, 238, 0.13), transparent 40%),
+          radial-gradient(circle at 88% 18%, rgba(248, 113, 113, 0.07), transparent 35%),
+          linear-gradient(160deg, #07090f 0%, #0d1220 50%, #07090f 100%);
+      }
 
-    <section class="wrap" id="problem">
-      <h2 class="section-title" data-i18n="problemTitle">The problem</h2>
-      <p class="section-sub" data-i18n="problemSub">Classic contest bots often feel outdated and opaque for both admins and participants.</p>
-      <div class="glass card problem">
-        <ul class="feature-list">
-          <li data-i18n="problem1">Text-only interfaces look old and reduce trust.</li>
-          <li data-i18n="problem2">Participants cannot see live registration dynamics or draw timing.</li>
-          <li data-i18n="problem3">Admins manually verify subscriptions across Telegram, YouTube, and TikTok.</li>
-          <li data-i18n="problem4">No analytics — growth and contest performance stay invisible.</li>
-        </ul>
-      </div>
-    </section>
+      .glass {
+        border: 1px solid rgba(91, 141, 238, 0.15);
+        background: rgba(12, 18, 32, 0.72);
+        backdrop-filter: blur(20px);
+      }
 
-    <section class="wrap" id="solution">
-      <h2 class="section-title" data-i18n="solutionTitle">Our solution</h2>
-      <p class="section-sub" data-i18n="solutionSub">Random Contest Bot 2.0 is a full web application embedded in Telegram. Each owner runs their own instance and controls access via ADMIN_ID / ADMIN_IDS.</p>
-      <div class="grid-3">
-        <div class="glass card"><div class="icon">✨</div><h3 data-i18n="sol1t">Native app feel</h3><p data-i18n="sol1d">SPA with glassmorphism, Framer Motion transitions, confetti, and second-accurate countdown timers.</p></div>
-        <div class="glass card"><div class="icon">📡</div><h3 data-i18n="sol2t">Radical transparency</h3><p data-i18n="sol2d">Live participant counter via WebSockets and instant visual feedback on condition checks.</p></div>
-        <div class="glass card"><div class="icon">🛠</div><h3 data-i18n="sol3t">All tools in one place</h3><p data-i18n="sol3d">Full GUI admin panel — no slash commands. Channels, sponsors, prizes, and analytics in a few taps.</p></div>
-      </div>
-    </section>
+      .phone-frame {
+        border: 1px solid rgba(91, 141, 238, 0.22);
+        background:
+          linear-gradient(180deg, rgba(10, 15, 28, 0.97), rgba(7, 9, 15, 0.95)),
+          #07090f;
+      }
 
-    <section class="wrap" id="features">
-      <h2 class="section-title" data-i18n="featuresTitle">Full feature set</h2>
-      <p class="section-sub" data-i18n="featuresSub">Everything needed to launch, run, and analyze community giveaways.</p>
-      <div class="grid-2">
-        <div class="glass card"><h3 data-i18n="f1t">Participant registration</h3><p data-i18n="f1d">Contest page with conditions, captcha, paid entry via Telegram Stars, OAuth for YouTube/TikTok, and real-time status updates.</p></div>
-        <div class="glass card"><h3 data-i18n="f2t">Multi-platform verification</h3><p data-i18n="f2d">Telegram channel/group subscription, YouTube channel follow (Google OAuth), TikTok follow, sponsor channels, and forum topics.</p></div>
-        <div class="glass card"><h3 data-i18n="f3t">Admin dashboard</h3><p data-i18n="f3d">Overview, contests, archive, audit journal, and channel management with bulk publish, CSV export, and post preview.</p></div>
-        <div class="glass card"><h3 data-i18n="f4t">Contest lifecycle</h3><p data-i18n="f4d">Draft → active → finished → results. Scheduled publish/end via Redis, random or activity-based draw, republish and repair tools.</p></div>
-        <div class="glass card"><h3 data-i18n="f5t">Results & celebration</h3><p data-i18n="f5d">Winner announcement page with confetti, public results deep links, and automatic channel publication from the bot.</p></div>
-        <div class="glass card"><h3 data-i18n="f6t">Analytics & health</h3><p data-i18n="f6d">Growth charts, overview metrics, system health panel, and admin action log for full operational visibility.</p></div>
-        <div class="glass card"><h3 data-i18n="f7t">Localization</h3><p data-i18n="f7d">Contest UI in RU / UK / EN with per-contest language selection for international communities.</p></div>
-        <div class="glass card"><h3 data-i18n="f8t">Self-hosted & secure</h3><p data-i18n="f8d">Docker Compose deployment, PostgreSQL + Redis, Telegram initData auth, admin-only API, and OAuth limited-use policies.</p></div>
-      </div>
-    </section>
+      .mesh {
+        background-image:
+          linear-gradient(rgba(91, 141, 238, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(91, 141, 238, 0.045) 1px, transparent 1px);
+        background-size: 36px 36px;
+      }
 
-    <section class="wrap" id="screenshots">
-      <h2 class="section-title" data-i18n="screensTitle">Screenshots</h2>
-      <p class="section-sub" data-i18n="screensSub">Gate screen and mobile experience inside Telegram.</p>
-      <div class="screens">
-        <figure><img src="/presentation/images/contest-desktop-gate.png" alt="Desktop gate" loading="lazy"><figcaption data-i18n="cap1">Desktop gate — open bot CTA</figcaption></figure>
-        <figure><img src="/presentation/images/contest-mobile-gate.png" alt="Mobile gate" loading="lazy"><figcaption data-i18n="cap2">Mobile layout in Telegram</figcaption></figure>
-        <figure><img src="/presentation/images/contest-prod-mobile-gate.png" alt="Production mobile" loading="lazy"><figcaption data-i18n="cap3">Production mobile experience</figcaption></figure>
-      </div>
-    </section>
+      .section-label { letter-spacing: 0.12em; }
 
-    <section class="wrap" id="tech">
-      <h2 class="section-title" data-i18n="techTitle">Technology stack</h2>
-      <p class="section-sub" data-i18n="techSub">Frontend-first architecture with a reliable async backend.</p>
-      <div class="stack" style="margin-bottom:20px">
-        <span class="tag">React 19</span><span class="tag">Vite 6</span><span class="tag">Tailwind CSS</span>
-        <span class="tag">Framer Motion</span><span class="tag">TanStack Query</span><span class="tag">Recharts</span>
-        <span class="tag">Python 3.11</span><span class="tag">FastAPI</span><span class="tag">Aiogram 3</span>
-        <span class="tag">PostgreSQL</span><span class="tag">Redis</span><span class="tag">WebSocket</span><span class="tag">Docker</span>
-      </div>
-      <div class="glass arch" data-i18n="arch">Telegram Mini App (React SPA)
-        ↕ REST + WebSocket
-FastAPI Web Service
-        ↕                    ↕
-   PostgreSQL            Redis (schedules, live events)
-        ↕
-Aiogram Bot (posts, commands, Stars payments)</div>
-    </section>
+      .accent-line::before {
+        content: "";
+        position: absolute;
+        inset-inline: 0;
+        top: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(91, 141, 238, 0.55), transparent);
+      }
 
-    <section class="wrap" id="business">
-      <h2 class="section-title" data-i18n="bizTitle">Business value</h2>
-      <div class="grid-3">
-        <div class="glass card"><h3 data-i18n="b1t">Higher engagement</h3><p data-i18n="b1d">Participants spend more time in a polished mini app with live counters and visual feedback.</p></div>
-        <div class="glass card"><h3 data-i18n="b2t">Better conversion</h3><p data-i18n="b2d">One-tap condition checks reduce friction for subscriptions and registrations.</p></div>
-        <div class="glass card"><h3 data-i18n="b3t">Data-driven growth</h3><p data-i18n="b3d">Built-in analytics help optimize contests and channel growth strategy.</p></div>
-      </div>
-    </section>
+      .lang-btn {
+        border: 1px solid rgba(91, 141, 238, 0.18);
+        background: rgba(12, 18, 32, 0.85);
+        color: #8a98b8;
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      }
+      .lang-btn:hover { background: rgba(91, 141, 238, 0.12); color: #e8edf8; }
+      .lang-btn.is-active {
+        background: rgba(91, 141, 238, 0.22);
+        border-color: rgba(91, 141, 238, 0.55);
+        color: #e8edf8;
+      }
 
-    <section class="wrap" id="cta">
-      <div class="glass card" style="text-align:center;padding:36px 24px">
-        <h2 class="section-title" style="margin-bottom:8px" data-i18n="ctaTitle">Ready to run your own instance?</h2>
-        <p style="color:var(--muted);margin:0 0 20px" data-i18n="ctaText">Open the bot in Telegram or deploy a self-hosted copy on your infrastructure.</p>
-        <div class="cta-row" style="margin:0">
-          <a class="btn btn-primary" href="https://t.me/telonyx_contest_bot" target="_blank" rel="noopener" data-i18n="ctaBot">Open bot in Telegram</a>
-          <a class="btn btn-secondary" href="https://github.com/se1dhe/random-contest-bot" target="_blank" rel="noopener">GitHub</a>
+      .live-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #4ade80;
+        box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+    </style>
+  </head>
+  <body class="font-body text-ink antialiased">
+
+    <!-- HEADER -->
+    <header class="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
+      <a href="#" class="flex items-center gap-3 font-extrabold text-ink font-display tracking-tight">
+        <span class="grid h-10 w-10 place-items-center rounded-2xl border border-accent/30 bg-panel-strong text-accent shadow-glow text-sm">TC</span>
+        <span data-i18n="brand">TelOnyx Contest Bot</span>
+      </a>
+      <nav class="hidden items-center gap-6 text-sm font-bold text-muted md:flex">
+        <a href="#features" data-i18n="nav.features" class="transition hover:text-accent">Возможности</a>
+        <a href="#roles" data-i18n="nav.roles" class="transition hover:text-accent">Интерфейсы</a>
+        <a href="#launch" data-i18n="nav.launch" class="transition hover:text-accent">Запуск</a>
+        <a href="#stack" data-i18n="nav.stack" class="transition hover:text-accent">Стек</a>
+      </nav>
+      <div class="flex flex-wrap items-center gap-3">
+        <div id="lang-switcher" class="flex rounded-full p-1" role="group" aria-label="Language">
+          <button type="button" class="lang-btn rounded-full px-3 py-2 text-xs font-extrabold" data-lang="ru">RU</button>
+          <button type="button" class="lang-btn rounded-full px-3 py-2 text-xs font-extrabold" data-lang="uk">UA</button>
+          <button type="button" class="lang-btn rounded-full px-3 py-2 text-xs font-extrabold" data-lang="en">EN</button>
+          <button type="button" class="lang-btn rounded-full px-3 py-2 text-xs font-extrabold" data-lang="pl">PL</button>
         </div>
+        <a href="https://t.me/se1dhe" data-i18n="nav.demo" class="rounded-full bg-gradient-to-b from-accent to-accent-dark px-5 py-3 text-sm font-extrabold text-white shadow-glow">Получить демо</a>
       </div>
-    </section>
-  </main>
+    </header>
 
-  <footer>
-    <div class="wrap">
-      <div class="logo">TELONYX<span>.APP</span> · Contest Bot</div>
-      <p data-i18n="footerNote">Mini App works only inside Telegram. This page is the public product presentation.</p>
-      <div class="footer-links">
-        <a href="https://contest.telonyx.app/privacy" data-i18n="privacy">Privacy Policy</a>
-        <a href="https://contest.telonyx.app/terms" data-i18n="terms">Terms of Service</a>
-        <a href="https://contest.telonyx.app/about" data-i18n="about">About</a>
+    <main>
+      <!-- HERO -->
+      <section class="mx-auto grid min-h-[calc(100vh-84px)] w-full max-w-7xl items-center gap-10 px-5 pb-14 pt-6 sm:px-8 lg:grid-cols-[1.05fr_0.95fr]">
+        <div>
+          <p class="section-label mb-5 text-xs font-extrabold uppercase text-accent" data-i18n="hero.eyebrow">Telegram-бот для розыгрышей</p>
+          <h1 class="max-w-4xl font-display text-5xl font-bold leading-[0.95] text-ink sm:text-6xl lg:text-7xl" data-i18n="hero.title">
+            Розыгрыш как нативное приложение — прямо в Telegram.
+          </h1>
+          <p class="mt-6 max-w-2xl text-lg font-semibold leading-8 text-muted" data-i18n="hero.subtitle">
+            Self-hosted бот с React Mini App, WebSocket-счётчиками, мультиплатформенной проверкой подписок и аналитикой — без общей SaaS-платформы и чужой админки.
+          </p>
+          <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+            <a href="https://t.me/se1dhe" data-i18n="hero.cta1" class="rounded-full bg-gradient-to-b from-accent to-accent-dark px-6 py-4 text-center text-sm font-extrabold text-white shadow-glow">Обсудить внедрение</a>
+            <a href="#features" data-i18n="hero.cta2" class="rounded-full border border-accent/25 bg-panel px-6 py-4 text-center text-sm font-extrabold text-ink">Посмотреть функционал</a>
+          </div>
+          <div class="mt-9 grid max-w-2xl grid-cols-3 gap-3">
+            <div class="glass accent-line relative rounded-2xl p-4">
+              <strong class="block font-display text-2xl text-accent">WS</strong>
+              <span class="text-xs font-bold leading-5 text-muted" data-i18n="hero.stat1">живой счётчик участников</span>
+            </div>
+            <div class="glass accent-line relative rounded-2xl p-4">
+              <strong class="block font-display text-2xl text-accent">3+</strong>
+              <span class="text-xs font-bold leading-5 text-muted" data-i18n="hero.stat2">платформы: TG, YouTube, TikTok</span>
+            </div>
+            <div class="glass accent-line relative rounded-2xl p-4">
+              <strong class="block font-display text-2xl text-accent">★</strong>
+              <span class="text-xs font-bold leading-5 text-muted" data-i18n="hero.stat3">оплата Telegram Stars</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- PHONE MOCKUP -->
+        <div class="relative mx-auto w-full max-w-[400px]">
+          <div class="phone-frame rounded-[2.3rem] p-4 shadow-card">
+            <div class="rounded-[1.8rem] bg-bg p-3 text-ink ring-1 ring-accent/12">
+              <div class="mb-4 flex items-center justify-between px-2 text-xs font-bold text-muted">
+                <span data-i18n="phone.label">Telegram Mini App</span>
+                <span class="text-accent">TELONYX</span>
+              </div>
+              <div class="rounded-[1.45rem] border border-white/5 bg-panel p-4 shadow-glass">
+                <div class="flex items-center gap-2 mb-1">
+                  <div class="live-dot"></div>
+                  <p class="text-xs font-extrabold uppercase tracking-widest text-accent" data-i18n="phone.badge">Конкурс активен</p>
+                </div>
+                <h2 class="mt-1 font-display text-2xl font-bold leading-tight text-ink" data-i18n="phone.title">iPhone 16 Pro от @channel</h2>
+                <p class="mt-2 text-sm font-semibold leading-6 text-muted" data-i18n="phone.subtitle">До конца: 2д 14ч 32м 09с</p>
+
+                <div class="mt-4 space-y-2">
+                  <div class="flex items-center gap-3 rounded-xl border border-white/5 bg-panel-strong p-3">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-green-500/15 text-green-400">✓</span>
+                    <div>
+                      <p class="text-xs font-bold text-ink" data-i18n="phone.cond1">Подписка на @channel</p>
+                      <p class="text-[10px] text-muted" data-i18n="phone.cond1s">Проверено</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3 rounded-xl border border-white/5 bg-panel-strong p-3">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">→</span>
+                    <div>
+                      <p class="text-xs font-bold text-ink" data-i18n="phone.cond2">Подписка YouTube</p>
+                      <p class="text-[10px] text-muted" data-i18n="phone.cond2s">Нажмите для проверки</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-4 rounded-xl border border-white/5 bg-panel-strong p-3 text-center">
+                  <p class="text-xs font-bold text-muted" data-i18n="phone.participants">Участников</p>
+                  <strong class="font-display text-3xl text-accent">1 247</strong>
+                </div>
+
+                <button class="mt-4 w-full rounded-xl bg-gradient-to-b from-accent to-accent-dark py-3 text-sm font-extrabold text-white shadow-glow" data-i18n="phone.btn">
+                  Участвовать
+                </button>
+                <div class="mt-3 flex justify-around border-t border-white/5 pt-3 text-[9px] font-semibold uppercase tracking-wider text-muted">
+                  <span class="text-accent" data-i18n="phone.tab1">Конкурс</span>
+                  <span data-i18n="phone.tab2">Условия</span>
+                  <span data-i18n="phone.tab3">Участники</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="glass absolute -bottom-7 -left-4 hidden rounded-3xl p-4 shadow-card sm:block">
+            <strong class="block text-sm text-accent" data-i18n="phone.floating.title">Победитель выбран!</strong>
+            <span class="text-xs font-bold text-muted" data-i18n="phone.floating.sub">конфетти + публикация в канал</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEATURES -->
+      <section id="features" class="mesh py-20">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+          <div class="max-w-3xl">
+            <p class="section-label text-xs font-extrabold uppercase text-accent" data-i18n="features.eyebrow">Что получает канал</p>
+            <h2 class="mt-3 font-display text-4xl font-bold leading-tight text-ink sm:text-5xl" data-i18n="features.title">Бот закрывает путь от анонса до объявления победителя.</h2>
+          </div>
+          <div class="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <article class="glass rounded-3xl p-6 shadow-card">
+              <span class="mb-5 grid h-12 w-12 place-items-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-8 0v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </span>
+              <h3 class="text-xl font-extrabold text-ink" data-i18n="f1.title">Регистрация участников</h3>
+              <p class="mt-3 text-sm font-semibold leading-7 text-muted" data-i18n="f1.text">Страница конкурса с условиями, капчей, платным входом via Telegram Stars и мгновенными статусами.</p>
+            </article>
+            <article class="glass rounded-3xl p-6 shadow-card">
+              <span class="mb-5 grid h-12 w-12 place-items-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+              </span>
+              <h3 class="text-xl font-extrabold text-ink" data-i18n="f2.title">Мультиплатформенная проверка</h3>
+              <p class="mt-3 text-sm font-semibold leading-7 text-muted" data-i18n="f2.text">Telegram-каналы, группы, forum topics, YouTube (Google OAuth), TikTok — всё проверяется автоматически.</p>
+            </article>
+            <article class="glass rounded-3xl p-6 shadow-card">
+              <span class="mb-5 grid h-12 w-12 place-items-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18M3 9h18M3 15h18M3 21h18"/></svg>
+              </span>
+              <h3 class="text-xl font-extrabold text-ink" data-i18n="f3.title">GUI Админ-панель</h3>
+              <p class="mt-3 text-sm font-semibold leading-7 text-muted" data-i18n="f3.text">Никаких /команд. Обзор, архив, журнал действий, управление каналами, bulk publish и CSV-экспорт.</p>
+            </article>
+            <article class="glass rounded-3xl p-6 shadow-card">
+              <span class="mb-5 grid h-12 w-12 place-items-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </span>
+              <h3 class="text-xl font-extrabold text-ink" data-i18n="f4.title">Жизненный цикл конкурса</h3>
+              <p class="mt-3 text-sm font-semibold leading-7 text-muted" data-i18n="f4.text">Черновик → активный → завершён → результаты. Отложенная публикация и завершение через Redis.</p>
+            </article>
+            <article class="glass rounded-3xl p-6 shadow-card">
+              <span class="mb-5 grid h-12 w-12 place-items-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              </span>
+              <h3 class="text-xl font-extrabold text-ink" data-i18n="f5.title">Аналитика и здоровье</h3>
+              <p class="mt-3 text-sm font-semibold leading-7 text-muted" data-i18n="f5.text">Графики роста участников, системный мониторинг и полный audit log действий администратора.</p>
+            </article>
+            <article class="glass rounded-3xl p-6 shadow-card" style="border-color: rgba(91,141,238,0.35);">
+              <span class="mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-b from-accent to-accent-dark text-white shadow-glow">
+                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </span>
+              <h3 class="text-xl font-extrabold text-ink" data-i18n="f6.title">Результаты и праздник</h3>
+              <p class="mt-3 text-sm font-semibold leading-7 text-muted" data-i18n="f6.text">Страница победителей с конфетти, deep-link на результаты и автоматическая публикация в канал.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ROLES -->
+      <section id="roles" class="py-20">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+          <div class="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <p class="section-label text-xs font-extrabold uppercase text-accent" data-i18n="roles.eyebrow">Два интерфейса</p>
+              <h2 class="mt-3 font-display text-4xl font-bold leading-tight text-ink sm:text-5xl" data-i18n="roles.title">Участник и администратор видят только своё.</h2>
+              <p class="mt-5 text-base font-semibold leading-8 text-muted" data-i18n="roles.subtitle">
+                Участник регистрируется через красивый Mini App. Администратор управляет конкурсами через полноценный GUI — без команд и ручной работы.
+              </p>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              <article class="rounded-3xl border border-accent/20 bg-panel-strong p-6 shadow-card">
+                <p class="text-sm font-extrabold uppercase text-accent" data-i18n="roles.participant.label">Участник · Mini App</p>
+                <h3 class="mt-4 font-display text-2xl font-bold text-ink" data-i18n="roles.participant.title">Зарегистрироваться за 3 тапа</h3>
+                <ul class="mt-5 space-y-3 text-sm font-semibold leading-6 text-muted">
+                  <li data-i18n="roles.p.i1">Страница конкурса с условиями</li>
+                  <li data-i18n="roles.p.i2">Живой таймер обратного отсчёта</li>
+                  <li data-i18n="roles.p.i3">Проверка подписок в один клик</li>
+                  <li data-i18n="roles.p.i4">Live-счётчик участников (WS)</li>
+                  <li data-i18n="roles.p.i5">Страница победителей + конфетти</li>
+                </ul>
+              </article>
+              <article class="rounded-3xl border border-accent/35 bg-gradient-to-b from-accent/15 to-panel p-6 shadow-glow">
+                <p class="text-sm font-extrabold uppercase text-accent" data-i18n="roles.admin.label">Администратор · WebApp</p>
+                <h3 class="mt-4 font-display text-2xl font-bold text-ink" data-i18n="roles.admin.title">Управление без команд</h3>
+                <ul class="mt-5 space-y-3 text-sm font-semibold leading-6 text-ink">
+                  <li data-i18n="roles.a.i1">Создание и редактирование конкурсов</li>
+                  <li data-i18n="roles.a.i2">Управление каналами и спонсорами</li>
+                  <li data-i18n="roles.a.i3">Bulk publish и preview постов</li>
+                  <li data-i18n="roles.a.i4">CSV-экспорт и аналитика</li>
+                  <li data-i18n="roles.a.i5">Audit log всех действий</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TECH ARCH -->
+      <section class="border-y border-accent/10 bg-panel-strong py-20">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+          <div class="grid gap-10 lg:grid-cols-[1fr_1fr]">
+            <div>
+              <p class="section-label text-xs font-extrabold uppercase text-accent" data-i18n="arch.eyebrow">Frontend-first архитектура</p>
+              <h2 class="mt-3 font-display text-4xl font-bold leading-tight text-ink sm:text-5xl" data-i18n="arch.title">SPA загружается один раз и работает плавно.</h2>
+              <p class="mt-5 text-base font-semibold leading-8 text-muted" data-i18n="arch.subtitle">
+                React + Vite фронтенд, FastAPI бэкенд, Redis как шина событий — всё общается через REST и WebSocket без перезагрузок страницы.
+              </p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="rounded-3xl border border-white/8 bg-panel p-5">
+                <strong class="text-lg text-accent" data-i18n="arch.c1.title">React 19 + Vite 6</strong>
+                <p class="mt-2 text-sm font-semibold leading-6 text-muted" data-i18n="arch.c1.text">SPA, TailwindCSS, Framer Motion, TanStack Query, Recharts.</p>
+              </div>
+              <div class="rounded-3xl border border-white/8 bg-panel p-5">
+                <strong class="text-lg text-accent" data-i18n="arch.c2.title">FastAPI + Aiogram 3</strong>
+                <p class="mt-2 text-sm font-semibold leading-6 text-muted" data-i18n="arch.c2.text">REST API, WebSocket, Python 3.11, SQLAlchemy, async-first.</p>
+              </div>
+              <div class="rounded-3xl border border-white/8 bg-panel p-5">
+                <strong class="text-lg text-accent" data-i18n="arch.c3.title">PostgreSQL + Redis</strong>
+                <p class="mt-2 text-sm font-semibold leading-6 text-muted" data-i18n="arch.c3.text">Надёжное хранение + шина live-событий, расписание задач.</p>
+              </div>
+              <div class="rounded-3xl border border-white/8 bg-panel p-5">
+                <strong class="text-lg text-accent" data-i18n="arch.c4.title">Docker Compose</strong>
+                <p class="mt-2 text-sm font-semibold leading-6 text-muted" data-i18n="arch.c4.text">Деплой одной командой на любой VPS. Self-hosted без SaaS.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LAUNCH -->
+      <section id="launch" class="mesh py-20">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+          <div class="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+            <div>
+              <p class="section-label text-xs font-extrabold uppercase text-accent" data-i18n="launch.eyebrow">Внедрение</p>
+              <h2 class="mt-3 font-display text-4xl font-bold leading-tight text-ink sm:text-5xl" data-i18n="launch.title">Запуск под ваш канал без долгих согласований.</h2>
+              <p class="mt-5 text-base font-semibold leading-8 text-muted" data-i18n="launch.subtitle">
+                Настраиваем бота, OAuth для YouTube/TikTok, URL Mini App и список админов. Проверяем все сценарии регистрации и проверки подписок.
+              </p>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="glass rounded-3xl p-6 shadow-card">
+                <span class="text-sm font-extrabold text-accent">01</span>
+                <h3 class="mt-3 text-xl font-extrabold text-ink" data-i18n="launch.s1.title">Конфигурация</h3>
+                <p class="mt-2 text-sm font-semibold leading-7 text-muted" data-i18n="launch.s1.text">BOT_TOKEN, ADMIN_IDS, WEBAPP_URL, Redis, PostgreSQL, SECRET_KEY.</p>
+              </div>
+              <div class="glass rounded-3xl p-6 shadow-card">
+                <span class="text-sm font-extrabold text-accent">02</span>
+                <h3 class="mt-3 text-xl font-extrabold text-ink" data-i18n="launch.s2.title">OAuth-интеграции</h3>
+                <p class="mt-2 text-sm font-semibold leading-7 text-muted" data-i18n="launch.s2.text">Google Cloud Console для YouTube, TikTok App для проверки подписок.</p>
+              </div>
+              <div class="glass rounded-3xl p-6 shadow-card">
+                <span class="text-sm font-extrabold text-accent">03</span>
+                <h3 class="mt-3 text-xl font-extrabold text-ink" data-i18n="launch.s3.title">Frontend и Telegram</h3>
+                <p class="mt-2 text-sm font-semibold leading-7 text-muted" data-i18n="launch.s3.text">npm run build, HTTPS, Menu Button в боте с ссылкой на Mini App.</p>
+              </div>
+              <div class="glass rounded-3xl p-6 shadow-card">
+                <span class="text-sm font-extrabold text-accent">04</span>
+                <h3 class="mt-3 text-xl font-extrabold text-ink" data-i18n="launch.s4.title">Проверяем сценарии</h3>
+                <p class="mt-2 text-sm font-semibold leading-7 text-muted" data-i18n="launch.s4.text">Регистрация, проверка подписок, draw, страница победителей, публикация.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESULTS -->
+      <section id="stack" class="py-20">
+        <div class="mx-auto max-w-7xl px-5 sm:px-8">
+          <div class="grid gap-10 lg:grid-cols-[1fr_1fr]">
+            <div>
+              <p class="section-label text-xs font-extrabold uppercase text-accent" data-i18n="result.eyebrow">Результат для канала</p>
+              <h2 class="mt-3 font-display text-4xl font-bold leading-tight text-ink sm:text-5xl" data-i18n="result.title">Больше доверия участников — прозрачные конкурсы работают лучше.</h2>
+              <p class="mt-5 text-base font-semibold leading-8 text-muted" data-i18n="result.subtitle">
+                Self-hosted решение даёт полный контроль над данными и отсутствие зависимости от внешних платформ.
+              </p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b1">Нативный UX без перезагрузок</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b2">Live-счётчик создаёт ажиотаж</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b3">Автопроверка подписок без ручного труда</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b4">Аналитика помогает оптимизировать розыгрыши</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b5">Платный вход через Telegram Stars</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b6">Полный контроль — ваши данные, ваш сервер</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b7">Мультиязычный UI (RU / UK / EN)</div>
+              <div class="glass rounded-2xl p-4 font-bold text-ink shadow-card" data-i18n="result.b8">Деплой одной командой — Docker Compose</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section id="contact" class="px-5 py-20 sm:px-8">
+        <div class="mx-auto max-w-5xl overflow-hidden rounded-[2rem] border border-accent/25 bg-panel-strong shadow-card">
+          <div class="grid gap-8 p-8 md:grid-cols-[1fr_auto] md:items-center md:p-12">
+            <div>
+              <p class="section-label text-xs font-extrabold uppercase text-accent" data-i18n="contact.eyebrow">Для владельцев Telegram-каналов</p>
+              <h2 class="mt-3 font-display text-4xl font-bold leading-tight text-ink sm:text-5xl" data-i18n="contact.title">Хотите, чтобы розыгрыши вызывали доверие, а не вопросы?</h2>
+              <p class="mt-5 max-w-2xl text-base font-semibold leading-8 text-muted" data-i18n="contact.subtitle">
+                Покажем демо Mini App, обсудим ваши каналы и условия, подготовим конфиг и запустим первый конкурс. Без ручной проверки подписок и непрозрачного draw.
+              </p>
+            </div>
+            <div class="grid gap-3">
+              <a href="https://t.me/se1dhe" data-i18n="contact.cta1" class="rounded-full bg-gradient-to-b from-accent to-accent-dark px-7 py-4 text-center text-sm font-extrabold text-white shadow-glow">Написать @se1dhe</a>
+              <a href="https://github.com/se1dhe/random-contest-bot" target="_blank" rel="noopener" class="rounded-full border border-accent/25 px-7 py-4 text-center text-sm font-extrabold text-accent">GitHub</a>
+              <a href="#launch" data-i18n="contact.cta3" class="rounded-full border border-white/10 px-7 py-4 text-center text-sm font-extrabold text-muted">Как проходит запуск</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mx-auto flex max-w-7xl flex-col gap-3 px-5 pb-8 text-sm font-bold text-muted sm:px-8 md:flex-row md:items-center md:justify-between">
+      <span data-i18n="footer.left">TelOnyx Contest Bot — Telegram Mini App для розыгрышей</span>
+      <div class="flex gap-4">
+        <a href="/privacy" class="hover:text-ink transition" data-i18n="footer.privacy">Privacy Policy</a>
+        <a href="/terms" class="hover:text-ink transition" data-i18n="footer.terms">Terms</a>
+        <a href="/about" class="hover:text-ink transition" data-i18n="footer.about">About</a>
       </div>
-      <p style="margin-top:16px">© TelOnyx · developed by se1dhe</p>
-    </div>
-  </footer>
+    </footer>
 
-  <script>
-    const LANGS = [
-      { code: 'uk', label: 'UA' },
-      { code: 'en', label: 'EN' },
-      { code: 'pl', label: 'PL' },
-      { code: 'ru', label: 'RU' },
-      { code: 'pt', label: 'PT' },
-      { code: 'es-MX', label: 'ES-MX' },
-    ];
+    <script>
+      const SUPPORTED_LANGS = ["ru", "uk", "en", "pl"];
+      const STORAGE_KEY = "tc-presentation-lang";
 
-    const T = {
-      uk: {
-        badge: 'CONTEST BOT 2.0',
-        heroTitle: 'Преміум <em>Telegram Mini App</em> для прозорих розіграшів',
-        heroSubtitle: 'Self-hosted бот з React-адмінкою, лічильниками в реальному часі, мультиплатформенною перевіркою підписок та аналітикою — без спільної SaaS-платформи.',
-        ctaBot: 'Відкрити бота в Telegram',
-        ctaApp: 'Mini App (лише в Telegram)',
-        problemTitle: 'Проблема',
-        problemSub: 'Класичні боти для конкурсів часто виглядають застарілими та непрозорими.',
-        problem1: 'Текстові інтерфейси знижують довіру та виглядають старомодно.',
-        problem2: 'Учасники не бачать динаміку реєстрацій і час розіграшу.',
-        problem3: 'Адміни вручну перевіряють підписки в Telegram, YouTube та TikTok.',
-        problem4: 'Немає аналітики — зростання каналу залишається невидимим.',
-        solutionTitle: 'Наше рішення',
-        solutionSub: 'Random Contest Bot 2.0 — повноцінний веб-додаток у Telegram. Кожен власник запускає свій екземпляр і керує доступом через ADMIN_ID / ADMIN_IDS.',
-        sol1t: 'Відчуття нативного застосунку', sol1d: 'SPA з glassmorphism, Framer Motion, конфеті та таймерами з точністю до секунди.',
-        sol2t: 'Радикальна прозорість', sol2d: 'Живий лічильник через WebSocket і миттєвий візуальний фідбек перевірок.',
-        sol3t: 'Усі інструменти в одному місці', sol3d: 'Повноцінна GUI-адмінка без slash-команд. Канали, спонсори, призи та аналітика.',
-        featuresTitle: 'Повний функціонал',
-        featuresSub: 'Усе необхідне для запуску, проведення та аналізу розіграшів.',
-        f1t: 'Реєстрація учасників', f1d: 'Сторінка конкурсу з умовами, капчею, оплатою Telegram Stars, OAuth YouTube/TikTok і статусами в реальному часі.',
-        f2t: 'Мультиплатформенна перевірка', f2d: 'Підписка Telegram, YouTube (Google OAuth), TikTok, спонсорські канали та forum topics.',
-        f3t: 'Адмін-панель', f3d: 'Огляд, конкурси, архів, журнал дій і канали з bulk publish, CSV export та preview постів.',
-        f4t: 'Життєвий цикл конкурсу', f4d: 'Чернетка → активний → завершений → результати. Відкладена публікація через Redis, random/activity draw.',
-        f5t: 'Результати та святкування', f5d: 'Сторінка переможців з конфеті, deep links і автопублікація в канал.',
-        f6t: 'Аналітика та здоров\'я системи', f6d: 'Графіки зростання, метрики, system health і audit log.',
-        f7t: 'Локалізація', f7d: 'UI конкурсу RU / UK / EN з вибором мови для кожного конкурсу.',
-        f8t: 'Self-hosted і безпека', f8d: 'Docker Compose, PostgreSQL + Redis, initData auth, admin-only API, OAuth Limited Use.',
-        screensTitle: 'Скриншоти', screensSub: 'Gate-екран і мобільний досвід у Telegram.',
-        cap1: 'Desktop gate — CTA відкрити бота', cap2: 'Мобільна версія в Telegram', cap3: 'Production mobile',
-        techTitle: 'Технологічний стек', techSub: 'Frontend-first архітектура з надійним async backend.',
-        arch: 'Telegram Mini App (React SPA)\n        ↕ REST + WebSocket\nFastAPI Web Service\n        ↕                    ↕\n   PostgreSQL            Redis (розклад, live events)\n        ↕\nAiogram Bot (пости, команди, Stars)',
-        bizTitle: 'Цінність для бізнесу',
-        b1t: 'Вища залученість', b1d: 'Учасники довше залишаються в полірованому mini app з live-лічильниками.',
-        b2t: 'Краща конверсія', b2d: 'Перевірка умов в один дотик зменшує тертя підписок.',
-        b3t: 'Зростання на даних', b3d: 'Вбудована аналітика допомагає оптимізувати конкурси.',
-        ctaTitle: 'Готові запустити свій екземпляр?',
-        ctaText: 'Відкрийте бота в Telegram або розгорніть self-hosted копію.',
-        footerNote: 'Mini App працює лише всередині Telegram. Ця сторінка — публічна презентація продукту.',
-        privacy: 'Політика конфіденційності', terms: 'Умови використання', about: 'Про продукт',
-      },
-      en: {
-        badge: 'CONTEST BOT 2.0',
-        heroTitle: 'Premium <em>Telegram Mini App</em> for transparent giveaways',
-        heroSubtitle: 'Self-hosted bot with a React admin panel, real-time counters, multi-platform verification, and analytics — without a shared SaaS platform.',
-        ctaBot: 'Open bot in Telegram', ctaApp: 'Mini App (Telegram only)',
-        problemTitle: 'The problem', problemSub: 'Classic contest bots often feel outdated and opaque.',
-        problem1: 'Text-only interfaces reduce trust.', problem2: 'No live registration dynamics or draw timing.',
-        problem3: 'Manual verification across Telegram, YouTube, TikTok.', problem4: 'No analytics for channel growth.',
-        solutionTitle: 'Our solution', solutionSub: 'Full web app in Telegram. Each owner runs their own instance via ADMIN_ID / ADMIN_IDS.',
-        sol1t: 'Native app feel', sol1d: 'SPA with glassmorphism, motion, confetti, precise countdowns.',
-        sol2t: 'Radical transparency', sol2d: 'Live WebSocket counter and instant check feedback.',
-        sol3t: 'All tools in one place', sol3d: 'GUI admin — channels, sponsors, prizes, analytics.',
-        featuresTitle: 'Full feature set', featuresSub: 'Everything to launch, run, and analyze giveaways.',
-        f1t: 'Participant registration', f1d: 'Conditions, captcha, Telegram Stars, YouTube/TikTok OAuth, live status.',
-        f2t: 'Multi-platform verification', f2d: 'Telegram, YouTube OAuth, TikTok, sponsors, forum topics.',
-        f3t: 'Admin dashboard', f3d: 'Overview, contests, archive, journal, channels, bulk publish, CSV export.',
-        f4t: 'Contest lifecycle', f4d: 'Draft → active → finished → results. Redis schedules, random/activity draw.',
-        f5t: 'Results & celebration', f5d: 'Confetti winners page, deep links, channel auto-publish.',
-        f6t: 'Analytics & health', f6d: 'Growth charts, metrics, system health, audit log.',
-        f7t: 'Localization', f7d: 'Contest UI in RU / UK / EN per contest.',
-        f8t: 'Self-hosted & secure', f8d: 'Docker, PostgreSQL, Redis, initData auth, OAuth Limited Use.',
-        screensTitle: 'Screenshots', screensSub: 'Gate screen and mobile Telegram experience.',
-        cap1: 'Desktop gate — open bot CTA', cap2: 'Mobile layout in Telegram', cap3: 'Production mobile',
-        techTitle: 'Technology stack', techSub: 'Frontend-first with reliable async backend.',
-        arch: 'Telegram Mini App (React SPA)\n        ↕ REST + WebSocket\nFastAPI Web Service\n        ↕                    ↕\n   PostgreSQL            Redis (schedules, live events)\n        ↕\nAiogram Bot (posts, commands, Stars)',
-        bizTitle: 'Business value',
-        b1t: 'Higher engagement', b1d: 'Polished mini app keeps users engaged with live counters.',
-        b2t: 'Better conversion', b2d: 'One-tap checks reduce subscription friction.',
-        b3t: 'Data-driven growth', b3d: 'Built-in analytics optimize contests and growth.',
-        ctaTitle: 'Ready to run your own instance?', ctaText: 'Open the bot or deploy self-hosted on your infra.',
-        footerNote: 'Mini App works only inside Telegram. This is the public product presentation.',
-        privacy: 'Privacy Policy', terms: 'Terms of Service', about: 'About',
-      },
-      pl: {
-        badge: 'CONTEST BOT 2.0',
-        heroTitle: 'Premium <em>Telegram Mini App</em> do przejrzystych losowań',
-        heroSubtitle: 'Self-hosted bot z panelem React, licznikami na żywo, weryfikacją wieloplatformową i analityką — bez wspólnej platformy SaaS.',
-        ctaBot: 'Otwórz bota w Telegramie', ctaApp: 'Mini App (tylko Telegram)',
-        problemTitle: 'Problem', problemSub: 'Klasyczne boty konkursowe bywają przestarzałe i nieprzejrzyste.',
-        problem1: 'Interfejsy tekstowe obniżają zaufanie.', problem2: 'Brak dynamiki rejestracji na żywo.',
-        problem3: 'Ręczna weryfikacja Telegram, YouTube, TikTok.', problem4: 'Brak analityki wzrostu kanału.',
-        solutionTitle: 'Nasze rozwiązanie', solutionSub: 'Pełna aplikacja web w Telegramie. Właściciel uruchamia własną instancję przez ADMIN_ID / ADMIN_IDS.',
-        sol1t: 'Odczucie natywnej aplikacji', sol1d: 'SPA z glassmorphism, animacjami, konfetti i timerami.',
-        sol2t: 'Pełna przejrzystość', sol2d: 'Liczniki WebSocket i natychmiastowy feedback weryfikacji.',
-        sol3t: 'Wszystkie narzędzia w jednym miejscu', sol3d: 'Panel GUI — kanały, sponsorzy, nagrody, analityka.',
-        featuresTitle: 'Pełny zestaw funkcji', featuresSub: 'Wszystko do uruchamiania i analizy konkursów.',
-        f1t: 'Rejestracja uczestników', f1d: 'Warunki, captcha, Telegram Stars, OAuth YouTube/TikTok.',
-        f2t: 'Weryfikacja wieloplatformowa', f2d: 'Telegram, YouTube OAuth, TikTok, sponsorzy, forum topics.',
-        f3t: 'Panel administracyjny', f3d: 'Przegląd, konkursy, archiwum, dziennik, kanały, bulk publish, CSV.',
-        f4t: 'Cykl życia konkursu', f4d: 'Szkic → aktywny → zakończony → wyniki. Harmonogram Redis, losowanie.',
-        f5t: 'Wyniki i świętowanie', f5d: 'Strona zwycięzców z konfetti i publikacja w kanale.',
-        f6t: 'Analityka i zdrowie systemu', f6d: 'Wykresy wzrostu, metryki, health panel, audit log.',
-        f7t: 'Lokalizacja', f7d: 'UI konkursu RU / UK / EN.',
-        f8t: 'Self-hosted i bezpieczeństwo', f8d: 'Docker, PostgreSQL, Redis, initData, OAuth Limited Use.',
-        screensTitle: 'Zrzuty ekranu', screensSub: 'Ekran gate i wersja mobilna w Telegramie.',
-        cap1: 'Desktop gate — CTA bota', cap2: 'Układ mobilny', cap3: 'Production mobile',
-        techTitle: 'Stos technologiczny', techSub: 'Architektura frontend-first z async backend.',
-        arch: 'Telegram Mini App (React SPA)\n        ↕ REST + WebSocket\nFastAPI Web Service\n        ↕                    ↕\n   PostgreSQL            Redis (harmonogram, live)\n        ↕\nAiogram Bot (posty, komendy, Stars)',
-        bizTitle: 'Wartość biznesowa',
-        b1t: 'Większe zaangażowanie', b1d: 'Dopracowane mini app z licznikami na żywo.',
-        b2t: 'Lepsza konwersja', b2d: 'Weryfikacja jednym dotknięciem.',
-        b3t: 'Wzrost oparty na danych', b3d: 'Analityka optymalizuje konkursy.',
-        ctaTitle: 'Gotowy uruchomić własną instancję?', ctaText: 'Otwórz bota lub wdroż self-hosted.',
-        footerNote: 'Mini App działa tylko w Telegramie. To publiczna prezentacja produktu.',
-        privacy: 'Polityka prywatności', terms: 'Regulamin', about: 'O produkcie',
-      },
-      ru: {
-        badge: 'CONTEST BOT 2.0',
-        heroTitle: 'Премиум <em>Telegram Mini App</em> для прозрачных розыгрышей',
-        heroSubtitle: 'Self-hosted бот с React-админкой, счётчиками в реальном времени, мультиплатформенной проверкой подписок и аналитикой — без общей SaaS-платформы.',
-        ctaBot: 'Открыть бота в Telegram', ctaApp: 'Mini App (только в Telegram)',
-        problemTitle: 'Проблема', problemSub: 'Классические боты для конкурсов часто выглядят устаревшими и непрозрачными.',
-        problem1: 'Текстовые интерфейсы снижают доверие.', problem2: 'Участники не видят динамику регистраций.',
-        problem3: 'Ручная проверка подписок в Telegram, YouTube и TikTok.', problem4: 'Нет аналитики роста канала.',
-        solutionTitle: 'Наше решение', solutionSub: 'Полноценное веб-приложение в Telegram. Каждый владелец запускает свой экземпляр через ADMIN_ID / ADMIN_IDS.',
-        sol1t: 'Ощущение нативного приложения', sol1d: 'SPA с glassmorphism, Framer Motion, конфetti и таймерами до секунды.',
-        sol2t: 'Радикальная прозрачность', sol2d: 'Живой счётчик через WebSocket и мгновенный фидбек проверок.',
-        sol3t: 'Все инструменты в одном месте', sol3d: 'GUI-админка без slash-команд. Каналы, спонсоры, призы, аналитика.',
-        featuresTitle: 'Полный функционал', featuresSub: 'Всё для запуска, проведения и анализа розыгрышей.',
-        f1t: 'Регистрация участников', f1d: 'Условия, капча, Telegram Stars, OAuth YouTube/TikTok, статусы в реальном времени.',
-        f2t: 'Мультиплатформенная проверка', f2d: 'Telegram, YouTube OAuth, TikTok, спонсоры, forum topics.',
-        f3t: 'Админ-панель', f3d: 'Обзор, конкурсы, архив, журнал, каналы, bulk publish, CSV export, preview.',
-        f4t: 'Жизненный цикл конкурса', f4d: 'Черновик → активный → завершён → результаты. Redis-расписание, random/activity draw.',
-        f5t: 'Результаты и праздник', f5d: 'Страница победителей с конфetti, deep links, автопубликация в канал.',
-        f6t: 'Аналитика и здоровье системы', f6d: 'Графики роста, метрики, system health, audit log.',
-        f7t: 'Локализация', f7d: 'UI конкурса RU / UK / EN с выбором языка.',
-        f8t: 'Self-hosted и безопасность', f8d: 'Docker Compose, PostgreSQL + Redis, initData auth, OAuth Limited Use.',
-        screensTitle: 'Скриншоты', screensSub: 'Gate-экран и мобильный опыт в Telegram.',
-        cap1: 'Desktop gate — CTA открыть бота', cap2: 'Мобильная версия', cap3: 'Production mobile',
-        techTitle: 'Технологический стек', techSub: 'Frontend-first архитектура с async backend.',
-        arch: 'Telegram Mini App (React SPA)\n        ↕ REST + WebSocket\nFastAPI Web Service\n        ↕                    ↕\n   PostgreSQL            Redis (расписание, live events)\n        ↕\nAiogram Bot (посты, команды, Stars)',
-        bizTitle: 'Ценность для бизнеса',
-        b1t: 'Выше вовлечённость', b1d: 'Участники дольше остаются в mini app с live-счётчиками.',
-        b2t: 'Лучшая конверсия', b2d: 'Проверка условий в один тап снижает трение.',
-        b3t: 'Рост на данных', b3d: 'Встроенная аналитика помогает оптимизировать конкурсы.',
-        ctaTitle: 'Готовы запустить свой экземпляр?', ctaText: 'Откройте бота или разверните self-hosted копию.',
-        footerNote: 'Mini App работает только внутри Telegram. Эта страница — публичная презентация продукта.',
-        privacy: 'Политика конфиденциальности', terms: 'Условия использования', about: 'О продукте',
-      },
-      pt: {
-        badge: 'CONTEST BOT 2.0',
-        heroTitle: 'Premium <em>Telegram Mini App</em> para sorteios transparentes',
-        heroSubtitle: 'Bot self-hosted com painel React, contadores em tempo real, verificação multiplataforma e analytics — sem plataforma SaaS compartilhada.',
-        ctaBot: 'Abrir bot no Telegram', ctaApp: 'Mini App (somente Telegram)',
-        problemTitle: 'O problema', problemSub: 'Bots clássicos de sorteio parecem antiquados e pouco transparentes.',
-        problem1: 'Interfaces só de texto reduzem a confiança.', problem2: 'Sem dinâmica ao vivo de inscrições.',
-        problem3: 'Verificação manual em Telegram, YouTube e TikTok.', problem4: 'Sem analytics de crescimento.',
-        solutionTitle: 'Nossa solução', solutionSub: 'App web completo no Telegram. Cada dono roda sua instância via ADMIN_ID / ADMIN_IDS.',
-        sol1t: 'Sensação de app nativo', sol1d: 'SPA com glassmorphism, animações, confete e timers precisos.',
-        sol2t: 'Transparência radical', sol2d: 'Contador WebSocket ao vivo e feedback instantâneo.',
-        sol3t: 'Todas as ferramentas em um lugar', sol3d: 'Painel GUI — canais, patrocinadores, prêmios, analytics.',
-        featuresTitle: 'Funcionalidades completas', featuresSub: 'Tudo para lançar, rodar e analisar sorteios.',
-        f1t: 'Registro de participantes', f1d: 'Condições, captcha, Telegram Stars, OAuth YouTube/TikTok.',
-        f2t: 'Verificação multiplataforma', f2d: 'Telegram, YouTube OAuth, TikTok, patrocinadores, forum topics.',
-        f3t: 'Painel admin', f3d: 'Visão geral, concursos, arquivo, journal, canais, bulk publish, CSV.',
-        f4t: 'Ciclo de vida do concurso', f4d: 'Rascunho → ativo → finalizado → resultados. Redis, sorteio random/atividade.',
-        f5t: 'Resultados e celebração', f5d: 'Página de vencedores com confete e publicação no canal.',
-        f6t: 'Analytics e saúde', f6d: 'Gráficos de crescimento, métricas, system health, audit log.',
-        f7t: 'Localização', f7d: 'UI do concurso em RU / UK / EN.',
-        f8t: 'Self-hosted e seguro', f8d: 'Docker, PostgreSQL, Redis, initData, OAuth Limited Use.',
-        screensTitle: 'Capturas de tela', screensSub: 'Tela gate e experiência mobile no Telegram.',
-        cap1: 'Gate desktop — CTA do bot', cap2: 'Layout mobile', cap3: 'Mobile em produção',
-        techTitle: 'Stack tecnológico', techSub: 'Arquitetura frontend-first com backend async.',
-        arch: 'Telegram Mini App (React SPA)\n        ↕ REST + WebSocket\nFastAPI Web Service\n        ↕                    ↕\n   PostgreSQL            Redis (agenda, live)\n        ↕\nAiogram Bot (posts, comandos, Stars)',
-        bizTitle: 'Valor de negócio',
-        b1t: 'Maior engajamento', b1d: 'Mini app polido com contadores ao vivo.',
-        b2t: 'Melhor conversão', b2d: 'Verificação em um toque reduz atrito.',
-        b3t: 'Crescimento orientado a dados', b3d: 'Analytics integrada otimiza concursos.',
-        ctaTitle: 'Pronto para rodar sua instância?', ctaText: 'Abra o bot ou faça deploy self-hosted.',
-        footerNote: 'Mini App funciona só dentro do Telegram. Esta é a apresentação pública do produto.',
-        privacy: 'Política de Privacidade', terms: 'Termos de Uso', about: 'Sobre',
-      },
-      'es-MX': {
-        badge: 'CONTEST BOT 2.0',
-        heroTitle: 'Premium <em>Telegram Mini App</em> para sorteos transparentes',
-        heroSubtitle: 'Bot self-hosted con panel React, contadores en tiempo real, verificación multiplataforma y analytics — sin plataforma SaaS compartida.',
-        ctaBot: 'Abrir bot en Telegram', ctaApp: 'Mini App (solo en Telegram)',
-        problemTitle: 'El problema', problemSub: 'Los bots clásicos de concursos se sienten viejos y poco claros.',
-        problem1: 'Interfaces de solo texto bajan la confianza.', problem2: 'Sin dinámica en vivo de registros.',
-        problem3: 'Verificación manual en Telegram, YouTube y TikTok.', problem4: 'Sin analytics de crecimiento.',
-        solutionTitle: 'Nuestra solución', solutionSub: 'App web completa en Telegram. Cada dueño corre su instancia con ADMIN_ID / ADMIN_IDS.',
-        sol1t: 'Se siente como app nativa', sol1d: 'SPA con glassmorphism, animaciones, confeti y timers precisos.',
-        sol2t: 'Transparencia total', sol2d: 'Contador WebSocket en vivo y feedback al instante.',
-        sol3t: 'Todas las herramientas en un solo lugar', sol3d: 'Panel GUI — canales, patrocinadores, premios, analytics.',
-        featuresTitle: 'Funcionalidad completa', featuresSub: 'Todo para lanzar, operar y analizar sorteos.',
-        f1t: 'Registro de participantes', f1d: 'Condiciones, captcha, Telegram Stars, OAuth YouTube/TikTok.',
-        f2t: 'Verificación multiplataforma', f2d: 'Telegram, YouTube OAuth, TikTok, patrocinadores, forum topics.',
-        f3t: 'Panel de administración', f3d: 'Resumen, concursos, archivo, bitácora, canales, bulk publish, CSV.',
-        f4t: 'Ciclo de vida del concurso', f4d: 'Borrador → activo → terminado → resultados. Redis, sorteo random/actividad.',
-        f5t: 'Resultados y celebración', f5d: 'Página de ganadores con confeti y publicación al canal.',
-        f6t: 'Analytics y salud del sistema', f6d: 'Gráficas de crecimiento, métricas, system health, audit log.',
-        f7t: 'Localización', f7d: 'UI del concurso en RU / UK / EN.',
-        f8t: 'Self-hosted y seguro', f8d: 'Docker, PostgreSQL, Redis, initData, OAuth Limited Use.',
-        screensTitle: 'Capturas de pantalla', screensSub: 'Pantalla gate y experiencia móvil en Telegram.',
-        cap1: 'Gate desktop — CTA del bot', cap2: 'Layout móvil', cap3: 'Mobile en producción',
-        techTitle: 'Stack tecnológico', techSub: 'Arquitectura frontend-first con backend async.',
-        arch: 'Telegram Mini App (React SPA)\n        ↕ REST + WebSocket\nFastAPI Web Service\n        ↕                    ↕\n   PostgreSQL            Redis (agenda, live)\n        ↕\nAiogram Bot (posts, comandos, Stars)',
-        bizTitle: 'Valor de negocio',
-        b1t: 'Mayor engagement', b1d: 'Mini app pulida con contadores en vivo.',
-        b2t: 'Mejor conversión', b2d: 'Verificación en un toque reduce fricción.',
-        b3t: 'Crecimiento con datos', b3d: 'Analytics integrada optimiza concursos.',
-        ctaTitle: '¿Listo para tu propia instancia?', ctaText: 'Abre el bot o despliega self-hosted.',
-        footerNote: 'Mini App solo funciona dentro de Telegram. Esta es la presentación pública del producto.',
-        privacy: 'Política de Privacidad', terms: 'Términos de Uso', about: 'Acerca de',
-      },
-    };
+      const messages = {
+        ru: {
+          "brand": "TelOnyx Contest Bot",
+          "nav.features": "Возможности", "nav.roles": "Интерфейсы",
+          "nav.launch": "Запуск", "nav.stack": "Стек", "nav.demo": "Получить демо",
+          "hero.eyebrow": "Telegram-бот для розыгрышей",
+          "hero.title": "Розыгрыш как нативное приложение — прямо в Telegram.",
+          "hero.subtitle": "Self-hosted бот с React Mini App, WebSocket-счётчиками, мультиплатформенной проверкой подписок и аналитикой — без общей SaaS-платформы и чужой админки.",
+          "hero.cta1": "Обсудить внедрение", "hero.cta2": "Посмотреть функционал",
+          "hero.stat1": "живой счётчик участников", "hero.stat2": "платформы: TG, YouTube, TikTok", "hero.stat3": "оплата Telegram Stars",
+          "phone.label": "Telegram Mini App", "phone.badge": "Конкурс активен",
+          "phone.title": "iPhone 16 Pro от @channel",
+          "phone.subtitle": "До конца: 2д 14ч 32м 09с",
+          "phone.cond1": "Подписка на @channel", "phone.cond1s": "Проверено",
+          "phone.cond2": "Подписка YouTube", "phone.cond2s": "Нажмите для проверки",
+          "phone.participants": "Участников", "phone.btn": "Участвовать",
+          "phone.tab1": "Конкурс", "phone.tab2": "Условия", "phone.tab3": "Участники",
+          "phone.floating.title": "Победитель выбран!", "phone.floating.sub": "конфетти + публикация в канал",
+          "features.eyebrow": "Что получает канал",
+          "features.title": "Бот закрывает путь от анонса до объявления победителя.",
+          "f1.title": "Регистрация участников", "f1.text": "Страница конкурса с условиями, капчей, платным входом via Telegram Stars и мгновенными статусами.",
+          "f2.title": "Мультиплатформенная проверка", "f2.text": "Telegram-каналы, группы, forum topics, YouTube (Google OAuth), TikTok — всё проверяется автоматически.",
+          "f3.title": "GUI Админ-панель", "f3.text": "Никаких /команд. Обзор, архив, журнал действий, управление каналами, bulk publish и CSV-экспорт.",
+          "f4.title": "Жизненный цикл конкурса", "f4.text": "Черновик → активный → завершён → результаты. Отложенная публикация и завершение через Redis.",
+          "f5.title": "Аналитика и здоровье", "f5.text": "Графики роста участников, системный мониторинг и полный audit log действий администратора.",
+          "f6.title": "Результаты и праздник", "f6.text": "Страница победителей с конфетти, deep-link на результаты и автоматическая публикация в канал.",
+          "roles.eyebrow": "Два интерфейса", "roles.title": "Участник и администратор видят только своё.",
+          "roles.subtitle": "Участник регистрируется через красивый Mini App. Администратор управляет конкурсами через полноценный GUI — без команд и ручной работы.",
+          "roles.participant.label": "Участник · Mini App", "roles.participant.title": "Зарегистрироваться за 3 тапа",
+          "roles.p.i1": "Страница конкурса с условиями", "roles.p.i2": "Живой таймер обратного отсчёта",
+          "roles.p.i3": "Проверка подписок в один клик", "roles.p.i4": "Live-счётчик участников (WS)", "roles.p.i5": "Страница победителей + конфетти",
+          "roles.admin.label": "Администратор · WebApp", "roles.admin.title": "Управление без команд",
+          "roles.a.i1": "Создание и редактирование конкурсов", "roles.a.i2": "Управление каналами и спонсорами",
+          "roles.a.i3": "Bulk publish и preview постов", "roles.a.i4": "CSV-экспорт и аналитика", "roles.a.i5": "Audit log всех действий",
+          "arch.eyebrow": "Frontend-first архитектура", "arch.title": "SPA загружается один раз и работает плавно.",
+          "arch.subtitle": "React + Vite фронтенд, FastAPI бэкенд, Redis как шина событий — всё общается через REST и WebSocket без перезагрузок страницы.",
+          "arch.c1.title": "React 19 + Vite 6", "arch.c1.text": "SPA, TailwindCSS, Framer Motion, TanStack Query, Recharts.",
+          "arch.c2.title": "FastAPI + Aiogram 3", "arch.c2.text": "REST API, WebSocket, Python 3.11, SQLAlchemy, async-first.",
+          "arch.c3.title": "PostgreSQL + Redis", "arch.c3.text": "Надёжное хранение + шина live-событий, расписание задач.",
+          "arch.c4.title": "Docker Compose", "arch.c4.text": "Деплой одной командой на любой VPS. Self-hosted без SaaS.",
+          "launch.eyebrow": "Внедрение", "launch.title": "Запуск под ваш канал без долгих согласований.",
+          "launch.subtitle": "Настраиваем бота, OAuth для YouTube/TikTok, URL Mini App и список админов. Проверяем все сценарии регистрации и проверки подписок.",
+          "launch.s1.title": "Конфигурация", "launch.s1.text": "BOT_TOKEN, ADMIN_IDS, WEBAPP_URL, Redis, PostgreSQL, SECRET_KEY.",
+          "launch.s2.title": "OAuth-интеграции", "launch.s2.text": "Google Cloud Console для YouTube, TikTok App для проверки подписок.",
+          "launch.s3.title": "Frontend и Telegram", "launch.s3.text": "npm run build, HTTPS, Menu Button в боте с ссылкой на Mini App.",
+          "launch.s4.title": "Проверяем сценарии", "launch.s4.text": "Регистрация, проверка подписок, draw, страница победителей, публикация.",
+          "result.eyebrow": "Результат для канала", "result.title": "Больше доверия участников — прозрачные конкурсы работают лучше.",
+          "result.subtitle": "Self-hosted решение даёт полный контроль над данными и отсутствие зависимости от внешних платформ.",
+          "result.b1": "Нативный UX без перезагрузок", "result.b2": "Live-счётчик создаёт ажиотаж",
+          "result.b3": "Автопроверка подписок без ручного труда", "result.b4": "Аналитика помогает оптимизировать розыгрыши",
+          "result.b5": "Платный вход через Telegram Stars", "result.b6": "Полный контроль — ваши данные, ваш сервер",
+          "result.b7": "Мультиязычный UI (RU / UK / EN)", "result.b8": "Деплой одной командой — Docker Compose",
+          "contact.eyebrow": "Для владельцев Telegram-каналов",
+          "contact.title": "Хотите, чтобы розыгрыши вызывали доверие, а не вопросы?",
+          "contact.subtitle": "Покажем демо Mini App, обсудим ваши каналы и условия, подготовим конфиг и запустим первый конкурс. Без ручной проверки подписок и непрозрачного draw.",
+          "contact.cta1": "Написать @se1dhe", "contact.cta3": "Как проходит запуск",
+          "footer.left": "TelOnyx Contest Bot — Telegram Mini App для розыгрышей",
+          "footer.privacy": "Privacy Policy", "footer.terms": "Terms", "footer.about": "About",
+        },
+        uk: {
+          "brand": "TelOnyx Contest Bot",
+          "nav.features": "Можливості", "nav.roles": "Інтерфейси",
+          "nav.launch": "Запуск", "nav.stack": "Стек", "nav.demo": "Отримати демо",
+          "hero.eyebrow": "Telegram-бот для розіграшів",
+          "hero.title": "Розіграш як нативний застосунок — прямо в Telegram.",
+          "hero.subtitle": "Self-hosted бот з React Mini App, WebSocket-лічильниками, мультиплатформенною перевіркою підписок та аналітикою — без спільної SaaS-платформи.",
+          "hero.cta1": "Обговорити впровадження", "hero.cta2": "Переглянути функціонал",
+          "hero.stat1": "живий лічильник учасників", "hero.stat2": "платформи: TG, YouTube, TikTok", "hero.stat3": "оплата Telegram Stars",
+          "phone.label": "Telegram Mini App", "phone.badge": "Конкурс активний",
+          "phone.title": "iPhone 16 Pro від @channel",
+          "phone.subtitle": "До кінця: 2д 14г 32х 09с",
+          "phone.cond1": "Підписка на @channel", "phone.cond1s": "Перевірено",
+          "phone.cond2": "Підписка YouTube", "phone.cond2s": "Натисніть для перевірки",
+          "phone.participants": "Учасників", "phone.btn": "Взяти участь",
+          "phone.tab1": "Конкурс", "phone.tab2": "Умови", "phone.tab3": "Учасники",
+          "phone.floating.title": "Переможця обрано!", "phone.floating.sub": "конфеті + публікація в канал",
+          "features.eyebrow": "Що отримує канал",
+          "features.title": "Бот закриває шлях від анонсу до оголошення переможця.",
+          "f1.title": "Реєстрація учасників", "f1.text": "Сторінка конкурсу з умовами, капчею, платним входом via Telegram Stars і миттєвими статусами.",
+          "f2.title": "Мультиплатформенна перевірка", "f2.text": "Telegram-канали, групи, forum topics, YouTube (Google OAuth), TikTok — усе перевіряється автоматично.",
+          "f3.title": "GUI Адмін-панель", "f3.text": "Жодних /команд. Огляд, архів, журнал дій, управління каналами, bulk publish і CSV-експорт.",
+          "f4.title": "Життєвий цикл конкурсу", "f4.text": "Чернетка → активний → завершений → результати. Відкладена публікація через Redis.",
+          "f5.title": "Аналітика та здоров'я", "f5.text": "Графіки зростання учасників, системний моніторинг і повний audit log дій адміністратора.",
+          "f6.title": "Результати та свято", "f6.text": "Сторінка переможців з конфеті, deep-link на результати й автоматична публікація в канал.",
+          "roles.eyebrow": "Два інтерфейси", "roles.title": "Учасник і адміністратор бачать лише своє.",
+          "roles.subtitle": "Учасник реєструється через красивий Mini App. Адміністратор керує конкурсами через повноцінний GUI — без команд і ручної роботи.",
+          "roles.participant.label": "Учасник · Mini App", "roles.participant.title": "Зареєструватися за 3 тапи",
+          "roles.p.i1": "Сторінка конкурсу з умовами", "roles.p.i2": "Живий таймер зворотного відліку",
+          "roles.p.i3": "Перевірка підписок в один клік", "roles.p.i4": "Live-лічильник учасників (WS)", "roles.p.i5": "Сторінка переможців + конфеті",
+          "roles.admin.label": "Адміністратор · WebApp", "roles.admin.title": "Управління без команд",
+          "roles.a.i1": "Створення та редагування конкурсів", "roles.a.i2": "Управління каналами та спонсорами",
+          "roles.a.i3": "Bulk publish і preview постів", "roles.a.i4": "CSV-експорт і аналітика", "roles.a.i5": "Audit log усіх дій",
+          "arch.eyebrow": "Frontend-first архітектура", "arch.title": "SPA завантажується один раз і працює плавно.",
+          "arch.subtitle": "React + Vite фронтенд, FastAPI бекенд, Redis як шина подій — усе спілкується через REST і WebSocket без перезавантажень.",
+          "arch.c1.title": "React 19 + Vite 6", "arch.c1.text": "SPA, TailwindCSS, Framer Motion, TanStack Query, Recharts.",
+          "arch.c2.title": "FastAPI + Aiogram 3", "arch.c2.text": "REST API, WebSocket, Python 3.11, SQLAlchemy, async-first.",
+          "arch.c3.title": "PostgreSQL + Redis", "arch.c3.text": "Надійне зберігання + шина live-подій, розклад задач.",
+          "arch.c4.title": "Docker Compose", "arch.c4.text": "Деплой однією командою на будь-який VPS. Self-hosted без SaaS.",
+          "launch.eyebrow": "Впровадження", "launch.title": "Запуск під ваш канал без довгих погоджень.",
+          "launch.subtitle": "Налаштовуємо бота, OAuth для YouTube/TikTok, URL Mini App і список адмінів. Перевіряємо всі сценарії реєстрації й перевірки підписок.",
+          "launch.s1.title": "Конфігурація", "launch.s1.text": "BOT_TOKEN, ADMIN_IDS, WEBAPP_URL, Redis, PostgreSQL, SECRET_KEY.",
+          "launch.s2.title": "OAuth-інтеграції", "launch.s2.text": "Google Cloud Console для YouTube, TikTok App для перевірки підписок.",
+          "launch.s3.title": "Frontend і Telegram", "launch.s3.text": "npm run build, HTTPS, Menu Button у боті з посиланням на Mini App.",
+          "launch.s4.title": "Перевіряємо сценарії", "launch.s4.text": "Реєстрація, перевірка підписок, draw, сторінка переможців, публікація.",
+          "result.eyebrow": "Результат для каналу", "result.title": "Більше довіри учасників — прозорі конкурси працюють краще.",
+          "result.subtitle": "Self-hosted рішення дає повний контроль над даними і відсутність залежності від зовнішніх платформ.",
+          "result.b1": "Нативний UX без перезавантажень", "result.b2": "Live-лічильник створює ажіотаж",
+          "result.b3": "Автоперевірка підписок без ручної праці", "result.b4": "Аналітика допомагає оптимізувати розіграші",
+          "result.b5": "Платний вхід через Telegram Stars", "result.b6": "Повний контроль — ваші дані, ваш сервер",
+          "result.b7": "Мультимовний UI (RU / UK / EN)", "result.b8": "Деплой однією командою — Docker Compose",
+          "contact.eyebrow": "Для власників Telegram-каналів",
+          "contact.title": "Хочете, щоб розіграші викликали довіру, а не запитання?",
+          "contact.subtitle": "Покажемо демо Mini App, обговоримо ваші канали й умови, підготуємо конфіг і запустимо перший конкурс. Без ручної перевірки підписок.",
+          "contact.cta1": "Написати @se1dhe", "contact.cta3": "Як проходить запуск",
+          "footer.left": "TelOnyx Contest Bot — Telegram Mini App для розіграшів",
+          "footer.privacy": "Privacy Policy", "footer.terms": "Terms", "footer.about": "About",
+        },
+        en: {
+          "brand": "TelOnyx Contest Bot",
+          "nav.features": "Features", "nav.roles": "Interfaces",
+          "nav.launch": "Launch", "nav.stack": "Stack", "nav.demo": "Get a demo",
+          "hero.eyebrow": "Telegram giveaway bot",
+          "hero.title": "Giveaways that feel like a native app — inside Telegram.",
+          "hero.subtitle": "Self-hosted bot with a React Mini App, WebSocket live counters, multi-platform subscription checks, and analytics — no shared SaaS, no third-party admin.",
+          "hero.cta1": "Discuss deployment", "hero.cta2": "Explore features",
+          "hero.stat1": "live participant counter", "hero.stat2": "platforms: TG, YouTube, TikTok", "hero.stat3": "Telegram Stars payments",
+          "phone.label": "Telegram Mini App", "phone.badge": "Contest is live",
+          "phone.title": "iPhone 16 Pro by @channel",
+          "phone.subtitle": "Ends in: 2d 14h 32m 09s",
+          "phone.cond1": "Subscribe to @channel", "phone.cond1s": "Verified",
+          "phone.cond2": "YouTube subscription", "phone.cond2s": "Tap to verify",
+          "phone.participants": "Participants", "phone.btn": "Join now",
+          "phone.tab1": "Contest", "phone.tab2": "Rules", "phone.tab3": "Participants",
+          "phone.floating.title": "Winner selected!", "phone.floating.sub": "confetti + channel post",
+          "features.eyebrow": "What the channel gets",
+          "features.title": "Bot covers the full path from announcement to winner reveal.",
+          "f1.title": "Participant registration", "f1.text": "Contest page with conditions, captcha, paid entry via Telegram Stars, and real-time status updates.",
+          "f2.title": "Multi-platform verification", "f2.text": "Telegram channels, groups, forum topics, YouTube (Google OAuth), TikTok — all checked automatically.",
+          "f3.title": "GUI Admin panel", "f3.text": "No slash commands. Overview, archive, action log, channel management, bulk publish, CSV export.",
+          "f4.title": "Contest lifecycle", "f4.text": "Draft → active → finished → results. Scheduled publish and end via Redis.",
+          "f5.title": "Analytics & health", "f5.text": "Participant growth charts, system monitoring, and full admin audit log.",
+          "f6.title": "Results & celebration", "f6.text": "Winners page with confetti, deep-link to results, and automatic channel post.",
+          "roles.eyebrow": "Two interfaces", "roles.title": "Participant and admin each see only their own view.",
+          "roles.subtitle": "Participants register via a polished Mini App. Admins manage contests via a full GUI — no commands, no manual work.",
+          "roles.participant.label": "Participant · Mini App", "roles.participant.title": "Register in 3 taps",
+          "roles.p.i1": "Contest page with conditions", "roles.p.i2": "Live countdown timer",
+          "roles.p.i3": "One-click subscription check", "roles.p.i4": "Live participant counter (WS)", "roles.p.i5": "Winners page + confetti",
+          "roles.admin.label": "Admin · WebApp", "roles.admin.title": "Manage without commands",
+          "roles.a.i1": "Create and edit contests", "roles.a.i2": "Manage channels and sponsors",
+          "roles.a.i3": "Bulk publish and post preview", "roles.a.i4": "CSV export and analytics", "roles.a.i5": "Audit log of all actions",
+          "arch.eyebrow": "Frontend-first architecture", "arch.title": "SPA loads once and runs smoothly.",
+          "arch.subtitle": "React + Vite frontend, FastAPI backend, Redis as event bus — everything communicates via REST and WebSocket without page reloads.",
+          "arch.c1.title": "React 19 + Vite 6", "arch.c1.text": "SPA, TailwindCSS, Framer Motion, TanStack Query, Recharts.",
+          "arch.c2.title": "FastAPI + Aiogram 3", "arch.c2.text": "REST API, WebSocket, Python 3.11, SQLAlchemy, async-first.",
+          "arch.c3.title": "PostgreSQL + Redis", "arch.c3.text": "Reliable storage + live event bus and task scheduling.",
+          "arch.c4.title": "Docker Compose", "arch.c4.text": "One-command deploy on any VPS. Self-hosted, no SaaS dependency.",
+          "launch.eyebrow": "Deployment", "launch.title": "Launch under your channel without long negotiations.",
+          "launch.subtitle": "We configure the bot, OAuth for YouTube/TikTok, Mini App URL, and admin list. We test all registration and subscription-check scenarios.",
+          "launch.s1.title": "Configuration", "launch.s1.text": "BOT_TOKEN, ADMIN_IDS, WEBAPP_URL, Redis, PostgreSQL, SECRET_KEY.",
+          "launch.s2.title": "OAuth integrations", "launch.s2.text": "Google Cloud Console for YouTube, TikTok App for subscription checks.",
+          "launch.s3.title": "Frontend & Telegram", "launch.s3.text": "npm run build, HTTPS, Menu Button in the bot linking to the Mini App.",
+          "launch.s4.title": "Test scenarios", "launch.s4.text": "Registration, subscription checks, draw, winners page, channel publication.",
+          "result.eyebrow": "Results for the channel", "result.title": "More participant trust — transparent giveaways perform better.",
+          "result.subtitle": "Self-hosted gives you full data ownership and no dependency on external platforms.",
+          "result.b1": "Native UX without reloads", "result.b2": "Live counter creates buzz",
+          "result.b3": "Auto subscription checks, no manual work", "result.b4": "Analytics to optimize giveaways",
+          "result.b5": "Paid entry via Telegram Stars", "result.b6": "Full control — your data, your server",
+          "result.b7": "Multilingual UI (RU / UK / EN)", "result.b8": "One-command deploy — Docker Compose",
+          "contact.eyebrow": "For Telegram channel owners",
+          "contact.title": "Want giveaways that build trust, not questions?",
+          "contact.subtitle": "We'll demo the Mini App, discuss your channels and conditions, prepare a config, and run your first contest — no manual verification, no opaque draw.",
+          "contact.cta1": "Message @se1dhe", "contact.cta3": "How launch works",
+          "footer.left": "TelOnyx Contest Bot — Telegram Mini App for giveaways",
+          "footer.privacy": "Privacy Policy", "footer.terms": "Terms", "footer.about": "About",
+        },
+        pl: {
+          "brand": "TelOnyx Contest Bot",
+          "nav.features": "Funkcje", "nav.roles": "Interfejsy",
+          "nav.launch": "Wdrożenie", "nav.stack": "Stos", "nav.demo": "Otrzymaj demo",
+          "hero.eyebrow": "Telegram-bot do losowań",
+          "hero.title": "Losowanie jak natywna aplikacja — prosto w Telegramie.",
+          "hero.subtitle": "Self-hosted bot z React Mini App, licznikami WebSocket, weryfikacją wieloplatformową i analityką — bez wspólnej platformy SaaS.",
+          "hero.cta1": "Omówić wdrożenie", "hero.cta2": "Zobaczyć funkcje",
+          "hero.stat1": "licznik uczestników na żywo", "hero.stat2": "platformy: TG, YouTube, TikTok", "hero.stat3": "płatności Telegram Stars",
+          "phone.label": "Telegram Mini App", "phone.badge": "Konkurs trwa",
+          "phone.title": "iPhone 16 Pro od @channel",
+          "phone.subtitle": "Koniec za: 2d 14g 32m 09s",
+          "phone.cond1": "Subskrypcja @channel", "phone.cond1s": "Zweryfikowano",
+          "phone.cond2": "Subskrypcja YouTube", "phone.cond2s": "Kliknij aby sprawdzić",
+          "phone.participants": "Uczestników", "phone.btn": "Dołącz",
+          "phone.tab1": "Konkurs", "phone.tab2": "Warunki", "phone.tab3": "Uczestnicy",
+          "phone.floating.title": "Zwycięzca wybrany!", "phone.floating.sub": "konfetti + post w kanale",
+          "features.eyebrow": "Co zyskuje kanał",
+          "features.title": "Bot obsługuje całą ścieżkę od ogłoszenia do wyłonienia zwycięzcy.",
+          "f1.title": "Rejestracja uczestników", "f1.text": "Strona konkursu z warunkami, captcha, płatnym wejściem via Telegram Stars i statusami na żywo.",
+          "f2.title": "Weryfikacja wieloplatformowa", "f2.text": "Kanały Telegram, grupy, forum topics, YouTube (Google OAuth), TikTok — wszystko sprawdzane automatycznie.",
+          "f3.title": "GUI Panel admina", "f3.text": "Żadnych /komend. Przegląd, archiwum, dziennik, kanały, bulk publish i eksport CSV.",
+          "f4.title": "Cykl życia konkursu", "f4.text": "Szkic → aktywny → zakończony → wyniki. Zaplanowana publikacja przez Redis.",
+          "f5.title": "Analityka i monitoring", "f5.text": "Wykresy wzrostu uczestników, monitoring systemu i pełny audit log działań administratora.",
+          "f6.title": "Wyniki i świętowanie", "f6.text": "Strona zwycięzców z konfetti, deep-link do wyników i automatyczny post w kanale.",
+          "roles.eyebrow": "Dwa interfejsy", "roles.title": "Uczestnik i admin widzą tylko swój widok.",
+          "roles.subtitle": "Uczestnik rejestruje się przez dopracowany Mini App. Admin zarządza konkursami przez pełny GUI — bez komend i ręcznej pracy.",
+          "roles.participant.label": "Uczestnik · Mini App", "roles.participant.title": "Zarejestruj się w 3 dotknięciach",
+          "roles.p.i1": "Strona konkursu z warunkami", "roles.p.i2": "Żywy timer odliczania",
+          "roles.p.i3": "Weryfikacja subskrypcji jednym kliknięciem", "roles.p.i4": "Licznik uczestników na żywo (WS)", "roles.p.i5": "Strona zwycięzców + konfetti",
+          "roles.admin.label": "Admin · WebApp", "roles.admin.title": "Zarządzanie bez komend",
+          "roles.a.i1": "Tworzenie i edycja konkursów", "roles.a.i2": "Zarządzanie kanałami i sponsorami",
+          "roles.a.i3": "Bulk publish i podgląd postów", "roles.a.i4": "Eksport CSV i analityka", "roles.a.i5": "Audit log wszystkich działań",
+          "arch.eyebrow": "Architektura frontend-first", "arch.title": "SPA ładuje się raz i działa płynnie.",
+          "arch.subtitle": "React + Vite frontend, backend FastAPI, Redis jako szyna zdarzeń — całość komunikuje się przez REST i WebSocket bez przeładowań strony.",
+          "arch.c1.title": "React 19 + Vite 6", "arch.c1.text": "SPA, TailwindCSS, Framer Motion, TanStack Query, Recharts.",
+          "arch.c2.title": "FastAPI + Aiogram 3", "arch.c2.text": "REST API, WebSocket, Python 3.11, SQLAlchemy, async-first.",
+          "arch.c3.title": "PostgreSQL + Redis", "arch.c3.text": "Niezawodne przechowywanie + szyna zdarzeń live i planowanie zadań.",
+          "arch.c4.title": "Docker Compose", "arch.c4.text": "Wdrożenie jedną komendą na dowolnym VPS. Self-hosted, bez SaaS.",
+          "launch.eyebrow": "Wdrożenie", "launch.title": "Uruchomienie pod Twój kanał bez długich negocjacji.",
+          "launch.subtitle": "Konfigurujemy bota, OAuth dla YouTube/TikTok, URL Mini App i listę adminów. Testujemy wszystkie scenariusze rejestracji i weryfikacji.",
+          "launch.s1.title": "Konfiguracja", "launch.s1.text": "BOT_TOKEN, ADMIN_IDS, WEBAPP_URL, Redis, PostgreSQL, SECRET_KEY.",
+          "launch.s2.title": "Integracje OAuth", "launch.s2.text": "Google Cloud Console dla YouTube, TikTok App dla weryfikacji subskrypcji.",
+          "launch.s3.title": "Frontend i Telegram", "launch.s3.text": "npm run build, HTTPS, Menu Button w bocie z linkiem do Mini App.",
+          "launch.s4.title": "Testujemy scenariusze", "launch.s4.text": "Rejestracja, weryfikacja subskrypcji, losowanie, strona zwycięzców, publikacja.",
+          "result.eyebrow": "Wyniki dla kanału", "result.title": "Więcej zaufania uczestników — przejrzyste losowania działają lepiej.",
+          "result.subtitle": "Self-hosted daje pełną kontrolę nad danymi i niezależność od zewnętrznych platform.",
+          "result.b1": "Natywny UX bez przeładowań", "result.b2": "Licznik na żywo tworzy zainteresowanie",
+          "result.b3": "Automatyczna weryfikacja subskrypcji", "result.b4": "Analityka pomaga optymalizować losowania",
+          "result.b5": "Płatny wstęp przez Telegram Stars", "result.b6": "Pełna kontrola — Twoje dane, Twój serwer",
+          "result.b7": "Wielojęzyczny UI (RU / UK / EN)", "result.b8": "Wdrożenie jedną komendą — Docker Compose",
+          "contact.eyebrow": "Dla właścicieli kanałów Telegram",
+          "contact.title": "Chcesz, żeby losowania wzbudzały zaufanie, nie pytania?",
+          "contact.subtitle": "Pokażemy demo Mini App, omówimy Twoje kanały i warunki, przygotujemy config i uruchomimy pierwszy konkurs. Bez ręcznej weryfikacji.",
+          "contact.cta1": "Napisz do @se1dhe", "contact.cta3": "Jak przebiega wdrożenie",
+          "footer.left": "TelOnyx Contest Bot — Telegram Mini App do losowań",
+          "footer.privacy": "Polityka prywatności", "footer.terms": "Regulamin", "footer.about": "O produkcie",
+        },
+      };
 
-    const htmlLang = { uk: 'uk', en: 'en', pl: 'pl', ru: 'ru', pt: 'pt', 'es-MX': 'es-MX' };
+      function setLang(lang) {
+        const dict = messages[lang] || messages.ru;
+        document.documentElement.lang = lang;
+        document.querySelectorAll("[data-i18n]").forEach((el) => {
+          const key = el.getAttribute("data-i18n");
+          if (dict[key] != null) el.textContent = dict[key];
+        });
+        document.querySelectorAll(".lang-btn").forEach((btn) => {
+          btn.classList.toggle("is-active", btn.dataset.lang === lang);
+        });
+        localStorage.setItem(STORAGE_KEY, lang);
+      }
 
-    function setLang(code) {
-      const dict = T[code] || T.en;
-      document.documentElement.lang = htmlLang[code] || 'en';
-      document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        const val = dict[key];
-        if (val == null) return;
-        if (key === 'heroTitle') el.innerHTML = val;
-        else el.textContent = val;
+      document.getElementById("lang-switcher").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-lang]");
+        if (btn) setLang(btn.dataset.lang);
       });
-      document.querySelectorAll('.lang-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.lang === code);
-      });
-      localStorage.setItem('presentation-lang', code);
-    }
 
-    const switchEl = document.getElementById('langSwitch');
-    LANGS.forEach(({ code, label }) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'lang-btn';
-      btn.dataset.lang = code;
-      btn.textContent = label;
-      btn.addEventListener('click', () => setLang(code));
-      switchEl.appendChild(btn);
-    });
-
-    const saved = localStorage.getItem('presentation-lang');
-    const browser = (navigator.language || 'en').toLowerCase();
-    const defaults = { uk: 'uk', ua: 'uk', en: 'en', pl: 'pl', ru: 'ru', pt: 'pt', 'es-mx': 'es-MX', es: 'es-MX' };
-    setLang(saved || defaults[browser] || defaults[browser.slice(0, 2)] || 'uk');
-  </script>
-</body>
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const browser = (navigator.language || "ru").toLowerCase().slice(0, 2);
+      const browserMap = { ru: "ru", uk: "uk", ua: "uk", en: "en", pl: "pl" };
+      setLang(saved && SUPPORTED_LANGS.includes(saved) ? saved : browserMap[browser] || "ru");
+    </script>
+  </body>
 </html>
