@@ -168,53 +168,94 @@
           </div>
         </div>
 
-        <!-- PHONE MOCKUP -->
-        <div class="relative mx-auto w-full max-w-[400px]">
+        <!-- PHONE MOCKUP — реальный UI конкурса -->
+        <div class="relative mx-auto w-full max-w-[380px]">
           <div class="phone-frame rounded-[2.3rem] p-4 shadow-card">
-            <div class="rounded-[1.8rem] bg-bg p-3 text-ink ring-1 ring-accent/12">
-              <div class="mb-4 flex items-center justify-between px-2 text-xs font-bold text-muted">
-                <span data-i18n="phone.label">Telegram Mini App</span>
-                <span class="text-accent">TELONYX</span>
+            <div class="rounded-[1.8rem] bg-[#111218] p-3 text-ink ring-1 ring-white/8">
+
+              <!-- stats bar -->
+              <div class="flex items-center gap-4 px-1 pb-3 text-xs font-bold text-muted border-b border-white/5">
+                <span class="flex items-center gap-1.5">
+                  <svg class="h-3.5 w-3.5 text-accent/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <span data-i18n="phone.stat.participants">0 участников</span>
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <svg class="h-3.5 w-3.5 text-yellow-400/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                  <span data-i18n="phone.stat.prizes">1 призов</span>
+                </span>
               </div>
-              <div class="rounded-[1.45rem] border border-white/5 bg-panel p-4 shadow-glass">
-                <div class="flex items-center gap-2 mb-1">
-                  <div class="live-dot"></div>
-                  <p class="text-xs font-extrabold uppercase tracking-widest text-accent" data-i18n="phone.badge">Конкурс активен</p>
-                </div>
-                <h2 class="mt-1 font-display text-2xl font-bold leading-tight text-ink" data-i18n="phone.title">iPhone 16 Pro от @channel</h2>
-                <p class="mt-2 text-sm font-semibold leading-6 text-muted" data-i18n="phone.subtitle">До конца: 2д 14ч 32м 09с</p>
 
-                <div class="mt-4 space-y-2">
-                  <div class="flex items-center gap-3 rounded-xl border border-white/5 bg-panel-strong p-3">
-                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-green-500/15 text-green-400">✓</span>
-                    <div>
-                      <p class="text-xs font-bold text-ink" data-i18n="phone.cond1">Подписка на @channel</p>
-                      <p class="text-[10px] text-muted" data-i18n="phone.cond1s">Проверено</p>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-3 rounded-xl border border-white/5 bg-panel-strong p-3">
-                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">→</span>
-                    <div>
-                      <p class="text-xs font-bold text-ink" data-i18n="phone.cond2">Подписка YouTube</p>
-                      <p class="text-[10px] text-muted" data-i18n="phone.cond2s">Нажмите для проверки</p>
-                    </div>
-                  </div>
+              <!-- timer -->
+              <div class="mt-3 flex items-center gap-3 rounded-2xl bg-[#1a1b24] border border-white/6 px-4 py-3">
+                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-500/20 text-violet-400">
+                  <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                </span>
+                <div class="flex-1">
+                  <p class="text-xs font-bold text-ink" data-i18n="phone.timer.label">До финала:</p>
+                  <p class="text-[10px] text-muted" data-i18n="phone.timer.sub">Живое обновление</p>
                 </div>
-
-                <div class="mt-4 rounded-xl border border-white/5 bg-panel-strong p-3 text-center">
-                  <p class="text-xs font-bold text-muted" data-i18n="phone.participants">Участников</p>
-                  <strong class="font-display text-3xl text-accent">1 247</strong>
-                </div>
-
-                <button class="mt-4 w-full rounded-xl bg-gradient-to-b from-accent to-accent-dark py-3 text-sm font-extrabold text-white shadow-glow" data-i18n="phone.btn">
-                  Участвовать
-                </button>
-                <div class="mt-3 flex justify-around border-t border-white/5 pt-3 text-[9px] font-semibold uppercase tracking-wider text-muted">
-                  <span class="text-accent" data-i18n="phone.tab1">Конкурс</span>
-                  <span data-i18n="phone.tab2">Условия</span>
-                  <span data-i18n="phone.tab3">Участники</span>
+                <div class="flex items-end gap-1 font-display font-bold text-ink">
+                  <div class="text-center"><span class="text-xl">00</span><p class="text-[8px] text-muted mt-0.5" data-i18n="phone.timer.h">Ч</p></div>
+                  <span class="text-xl pb-3 text-muted">:</span>
+                  <div class="text-center"><span class="text-xl">11</span><p class="text-[8px] text-muted mt-0.5" data-i18n="phone.timer.m">М</p></div>
+                  <span class="text-xl pb-3 text-muted">:</span>
+                  <div class="text-center"><span class="text-xl text-accent">05</span><p class="text-[8px] text-muted mt-0.5" data-i18n="phone.timer.s">С</p></div>
                 </div>
               </div>
+
+              <!-- conditions -->
+              <p class="mt-4 mb-2 px-1 text-[10px] font-extrabold uppercase tracking-widest text-muted" data-i18n="phone.conditions">Условия участия</p>
+              <div class="space-y-2">
+                <!-- Telegram — done -->
+                <div class="flex items-center gap-3 rounded-2xl bg-[#1a1b24] border border-white/6 px-3 py-2.5">
+                  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-500/20 text-blue-400">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15,3 21,3 21,9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-bold text-ink truncate" data-i18n="phone.cond1">test_telonyx</p>
+                    <p class="text-[10px] font-bold text-green-400" data-i18n="phone.cond1s">ВЫПОЛНЕНО</p>
+                  </div>
+                  <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-green-500/20 text-green-400 text-xs">✓</span>
+                </div>
+                <!-- YouTube — not connected -->
+                <div class="flex items-center gap-3 rounded-2xl bg-[#1a1b24] border border-white/6 px-3 py-2.5">
+                  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-red-500/20 text-red-400">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.54 3.5 12 3.5 12 3.5s-7.54 0-9.38.55A3.02 3.02 0 0 0 .5 6.19C0 8.04 0 12 0 12s0 3.96.5 5.81a3.02 3.02 0 0 0 2.12 2.14C4.46 20.5 12 20.5 12 20.5s7.54 0 9.38-.55a3.02 3.02 0 0 0 2.12-2.14C24 15.96 24 12 24 12s0-3.96-.5-5.81zM9.75 15.02V8.98L15.5 12l-5.75 3.02z"/></svg>
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-bold text-ink" data-i18n="phone.cond2">YouTube канал</p>
+                    <p class="text-[10px] text-muted" data-i18n="phone.cond2s">АККАУНТ НЕ ПОДКЛЮЧЕН</p>
+                  </div>
+                  <button class="shrink-0 rounded-lg bg-white/8 border border-white/10 px-2 py-1 text-[9px] font-bold text-ink whitespace-nowrap" data-i18n="phone.cond2btn">Подключить YouTube</button>
+                </div>
+                <!-- TikTok — not connected -->
+                <div class="flex items-center gap-3 rounded-2xl bg-[#1a1b24] border border-white/6 px-3 py-2.5">
+                  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/8 text-ink">
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34l.03-8.61a8.16 8.16 0 0 0 4.79 1.53V4.8a4.85 4.85 0 0 1-1.06-.11z"/></svg>
+                  </span>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-bold text-ink" data-i18n="phone.cond3">TikTok канал</p>
+                    <p class="text-[10px] text-muted" data-i18n="phone.cond3s">АККАУНТ НЕ ПОДКЛЮЧЕН</p>
+                  </div>
+                  <button class="shrink-0 rounded-lg bg-white/8 border border-white/10 px-2 py-1 text-[9px] font-bold text-ink whitespace-nowrap" data-i18n="phone.cond3btn">Подключить TikTok</button>
+                </div>
+              </div>
+
+              <!-- bottom status -->
+              <div class="mt-3 rounded-2xl bg-[#1a1b24] border border-white/6 px-3 py-3">
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-1.5 text-xs font-bold text-muted">
+                    <svg class="h-3.5 w-3.5 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    <span data-i18n="phone.draw.date">Розыгрыш: 31.05.2026</span>
+                  </span>
+                  <span class="rounded-full bg-violet-500/25 px-2 py-0.5 text-[9px] font-extrabold text-violet-300" data-i18n="phone.draw.status">АКТИВЕН</span>
+                </div>
+                <div class="mt-2 h-1.5 rounded-full bg-white/8 overflow-hidden">
+                  <div class="h-full w-1/3 rounded-full bg-gradient-to-r from-violet-500 to-accent"></div>
+                </div>
+                <p class="mt-2 text-center text-[9px] font-bold uppercase tracking-wider text-muted" data-i18n="phone.draw.hint">Выполните все условия выше</p>
+              </div>
+
             </div>
           </div>
           <div class="glass absolute -bottom-7 -left-4 hidden rounded-3xl p-4 shadow-card sm:block">
@@ -463,6 +504,14 @@
           "phone.cond2": "Подписка YouTube", "phone.cond2s": "Нажмите для проверки",
           "phone.participants": "Участников", "phone.btn": "Участвовать",
           "phone.tab1": "Конкурс", "phone.tab2": "Условия", "phone.tab3": "Участники",
+          "phone.stat.participants": "0 участников", "phone.stat.prizes": "1 призов",
+          "phone.timer.label": "До финала:", "phone.timer.sub": "Живое обновление",
+          "phone.timer.h": "Ч", "phone.timer.m": "М", "phone.timer.s": "С",
+          "phone.conditions": "Условия участия",
+          "phone.cond1": "test_telonyx", "phone.cond1s": "ВЫПОЛНЕНО",
+          "phone.cond2": "YouTube канал", "phone.cond2s": "АККАУНТ НЕ ПОДКЛЮЧЕН", "phone.cond2btn": "Подключить YouTube",
+          "phone.cond3": "TikTok канал", "phone.cond3s": "АККАУНТ НЕ ПОДКЛЮЧЕН", "phone.cond3btn": "Подключить TikTok",
+          "phone.draw.date": "Розыгрыш: 31.05.2026", "phone.draw.status": "АКТИВЕН", "phone.draw.hint": "Выполните все условия выше",
           "phone.floating.title": "Победитель выбран!", "phone.floating.sub": "конфетти + публикация в канал",
           "features.eyebrow": "Что получает канал",
           "features.title": "Бот закрывает путь от анонса до объявления победителя.",
@@ -521,6 +570,14 @@
           "phone.cond2": "Підписка YouTube", "phone.cond2s": "Натисніть для перевірки",
           "phone.participants": "Учасників", "phone.btn": "Взяти участь",
           "phone.tab1": "Конкурс", "phone.tab2": "Умови", "phone.tab3": "Учасники",
+          "phone.stat.participants": "0 учасників", "phone.stat.prizes": "1 призів",
+          "phone.timer.label": "До фіналу:", "phone.timer.sub": "Живе оновлення",
+          "phone.timer.h": "Г", "phone.timer.m": "Х", "phone.timer.s": "С",
+          "phone.conditions": "Умови участі",
+          "phone.cond1": "test_telonyx", "phone.cond1s": "ВИКОНАНО",
+          "phone.cond2": "YouTube канал", "phone.cond2s": "АКАУНТ НЕ ПІДКЛЮЧЕНО", "phone.cond2btn": "Підключити YouTube",
+          "phone.cond3": "TikTok канал", "phone.cond3s": "АКАУНТ НЕ ПІДКЛЮЧЕНО", "phone.cond3btn": "Підключити TikTok",
+          "phone.draw.date": "Розіграш: 31.05.2026", "phone.draw.status": "АКТИВНИЙ", "phone.draw.hint": "Виконайте всі умови вище",
           "phone.floating.title": "Переможця обрано!", "phone.floating.sub": "конфеті + публікація в канал",
           "features.eyebrow": "Що отримує канал",
           "features.title": "Бот закриває шлях від анонсу до оголошення переможця.",
@@ -579,6 +636,14 @@
           "phone.cond2": "YouTube subscription", "phone.cond2s": "Tap to verify",
           "phone.participants": "Participants", "phone.btn": "Join now",
           "phone.tab1": "Contest", "phone.tab2": "Rules", "phone.tab3": "Participants",
+          "phone.stat.participants": "0 participants", "phone.stat.prizes": "1 prize",
+          "phone.timer.label": "Until draw:", "phone.timer.sub": "Live update",
+          "phone.timer.h": "H", "phone.timer.m": "M", "phone.timer.s": "S",
+          "phone.conditions": "Participation conditions",
+          "phone.cond1": "test_telonyx", "phone.cond1s": "VERIFIED",
+          "phone.cond2": "YouTube channel", "phone.cond2s": "ACCOUNT NOT CONNECTED", "phone.cond2btn": "Connect YouTube",
+          "phone.cond3": "TikTok channel", "phone.cond3s": "ACCOUNT NOT CONNECTED", "phone.cond3btn": "Connect TikTok",
+          "phone.draw.date": "Draw: 31.05.2026", "phone.draw.status": "ACTIVE", "phone.draw.hint": "Complete all conditions above",
           "phone.floating.title": "Winner selected!", "phone.floating.sub": "confetti + channel post",
           "features.eyebrow": "What the channel gets",
           "features.title": "Bot covers the full path from announcement to winner reveal.",
@@ -637,6 +702,14 @@
           "phone.cond2": "Subskrypcja YouTube", "phone.cond2s": "Kliknij aby sprawdzić",
           "phone.participants": "Uczestników", "phone.btn": "Dołącz",
           "phone.tab1": "Konkurs", "phone.tab2": "Warunki", "phone.tab3": "Uczestnicy",
+          "phone.stat.participants": "0 uczestników", "phone.stat.prizes": "1 nagroda",
+          "phone.timer.label": "Do losowania:", "phone.timer.sub": "Aktualizacja na żywo",
+          "phone.timer.h": "G", "phone.timer.m": "M", "phone.timer.s": "S",
+          "phone.conditions": "Warunki uczestnictwa",
+          "phone.cond1": "test_telonyx", "phone.cond1s": "WYKONANO",
+          "phone.cond2": "Kanał YouTube", "phone.cond2s": "KONTO NIE PODŁĄCZONE", "phone.cond2btn": "Połącz YouTube",
+          "phone.cond3": "Kanał TikTok", "phone.cond3s": "KONTO NIE PODŁĄCZONE", "phone.cond3btn": "Połącz TikTok",
+          "phone.draw.date": "Losowanie: 31.05.2026", "phone.draw.status": "AKTYWNY", "phone.draw.hint": "Wykonaj wszystkie warunki powyżej",
           "phone.floating.title": "Zwycięzca wybrany!", "phone.floating.sub": "konfetti + post w kanale",
           "features.eyebrow": "Co zyskuje kanał",
           "features.title": "Bot obsługuje całą ścieżkę od ogłoszenia do wyłonienia zwycięzcy.",
