@@ -4,7 +4,7 @@
 import uvicorn
 import logging
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from shared.config import config
@@ -25,31 +25,16 @@ presentation_index = os.path.join(presentation_dir, "index.html")
 presentation_images_dir = os.path.join(presentation_dir, "images")
 
 
-def _request_host(request: Request) -> str:
-    return request.headers.get("host", "").split(":")[0].lower()
-
-
-def _is_presentation_host(host: str) -> bool:
-    if host in {"context.telonyx.app", "www.context.telonyx.app"}:
-        return True
-    return host.startswith("context.") and host.endswith(".telonyx.app")
-
-
-def _presentation_file_response(relative_path: str) -> FileResponse | None:
-    safe_path = os.path.normpath(relative_path).lstrip(os.sep)
-    if safe_path.startswith(".."):
-        return None
-    file_path = os.path.join(presentation_dir, safe_path)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    return None
-
 # Монтируем загрузки
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # Монтируем ассеты билда
 if os.path.exists(os.path.join(dist_dir, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+
+# Монтируем презентацию как статический сайт на /presentation
+if os.path.exists(presentation_dir):
+    app.mount("/presentation", StaticFiles(directory=presentation_dir, html=True), name="presentation")
 
 # Подключение API роутеров
 app.include_router(contests.router)
@@ -61,26 +46,7 @@ app.include_router(ws.router)
 app.include_router(analytics.router)
 
 
-@app.middleware("http")
-async def presentation_host_router(request: Request, call_next):
-    """Serve marketing presentation on context.telonyx.app without affecting contest Mini App."""
-    host = _request_host(request)
-    if not _is_presentation_host(host):
-        return await call_next(request)
 
-    path = request.url.path
-    if path.startswith(("/api/", "/uploads/", "/assets/")):
-        return await call_next(request)
-
-    if path.startswith("/images/"):
-        image_response = _presentation_file_response(path.lstrip("/"))
-        if image_response:
-            return image_response
-
-    if os.path.exists(presentation_index):
-        return FileResponse(presentation_index)
-
-    return await call_next(request)
 
 
 LEGAL_PAGE_STYLE = """
